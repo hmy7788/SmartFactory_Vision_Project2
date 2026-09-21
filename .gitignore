@@ -1,0 +1,27 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.ipynb_checkpoints/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Data (large; keep folder skeleton only)
+data/**/*
+!data/**/
+!data/**/.gitkeep
+
+# Model weights / training outputs
+checkpoints/**/*
+!checkpoints/.gitkeep
+*.pt
+*.pth
+*.onnx
+runs/

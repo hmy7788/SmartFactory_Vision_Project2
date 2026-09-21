@@ -1,0 +1,10 @@
+﻿# GPU torch(CUDA 12.6)는 conda env `vision_programming`에 미리 설치되어 있음:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+# 아래는 그 외 라이브러리
+ultralytics>=8.4      # YOLO (학습/추론)
+mediapipe>=1.0        # 손 추적
+opencv-python>=5.0    # 컨투어/구멍 검출(룰베이스), 웹캠
+numpy>=2.0
+fastapi>=0.141       # 웹 UI 백엔드
+uvicorn[standard]>=0.53
+pytest
