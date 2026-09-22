@@ -289,6 +289,12 @@ class Store:
                           "WHERE result='COMPLETED' AND closed_utc >= datetime('now', ?)", (f"-{int(days)} days",))
         return {"by_recipe": rows, "total": total}
 
+    def fpy_daily(self, days: int = 7) -> list[dict]:
+        """분석 탭 추이선. 날짜별 첫 시도 통과율 — 하루에 완료가 없으면 행이 없다 (0 으로 채우지 않는다)."""
+        return self._rows("SELECT substr(closed_utc,1,10) AS day, ROUND(100.0*AVG(first_pass),1) AS fpy, COUNT(*) AS n "
+                          "FROM products WHERE result='COMPLETED' AND closed_utc >= datetime('now', ?) "
+                          "GROUP BY day ORDER BY day", (f"-{int(days)} days",))
+
     def cycle(self, days: int = 7) -> dict[str, dict]:
         out = {}
         for r in self._rows("SELECT recipe_id, cycle_ms, materials_ms, assembly_ms FROM products "
