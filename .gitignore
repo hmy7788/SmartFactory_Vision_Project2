@@ -25,3 +25,6 @@ checkpoints/**/*
 *.pth
 *.onnx
 runs/
+
+# 학습용으로 원본 데이터를 복사/변환해 만든 데이터셋 (재생성 가능, 대용량)
+datasets/

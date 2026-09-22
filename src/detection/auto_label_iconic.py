@@ -6,7 +6,12 @@ ICONIC 데이터셋(검은 배경, TOP-DOWN, 정적 촬영) 자동 OBB(Oriented 
 전제 조건:
 - 배경이 검은색(또는 어두운 단색)이고 부품이 배경보다 밝은 색일 것
 - 이미지 폴더 구조: data/iconic/{class_name}/*.jpg (또는 .png)
-  예) data/iconic/볼트_주황/*.jpg, data/iconic/나무_5구멍/*.jpg ...
+  예) data/iconic/bolt_2/*.jpg, data/iconic/mother_part/*.jpg ...
+
+클래스명(한글 ↔ 영문 코드) 매핑:
+  나무_5구멍 = mother_part / 볼트_노랑 = bolt_1 / 볼트_주황 = bolt_2
+  나무_2구멍 = part_2hole  / 나무_3구멍 = part_3hole
+  (폴더명은 영문 코드 사용 — 한글 경로 이슈 회피 목적)
 
 ⚠️ 이 스크립트는 ICONIC(검은 배경, 손 없음) 데이터 전용입니다.
    손이 포함된 픽킹 영상 프레임에는 사용하지 마세요 (occlusion 때문에 부정확해짐 — Roboflow 권장).
@@ -18,7 +23,7 @@ ICONIC 데이터셋(검은 배경, TOP-DOWN, 정적 촬영) 자동 OBB(Oriented 
    → YOLO 학습 시 detect가 아니라 **obb task**(예: yolov8n-obb, yolo11n-obb)를 써야 한다.
 
 사용법:
-    python auto_label_iconic.py --input data/iconic --output data/labels/iconic --preview data/preview/iconic
+    python src/detection/auto_label_iconic.py --input data/iconic --output data/labels/iconic --preview data/preview/iconic
 
 출력:
 - YOLO-OBB 포맷 라벨 (.txt): 클래스ID x1 y1 x2 y2 x3 y3 x4 y4 (4개 꼭짓점, 전부 0~1 정규화)
@@ -32,13 +37,13 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-# ── 클래스 이름 → ID 매핑 (프로젝트 CLAUDE.md 기준, 폴더명이 다르면 여기를 수정) ──
+# ── 클래스 이름 → ID 매핑 (폴더명이 다르면 여기를 수정) ──
 CLASS_TO_ID = {
-    "볼트_주황": 0,
-    "볼트_노랑": 1,
-    "나무_5구멍": 2,
-    "나무_3구멍": 3,
-    "나무_2구멍": 4,
+    "bolt_2": 0,        # 볼트_주황
+    "bolt_1": 1,         # 볼트_노랑
+    "mother_part": 2,     # 나무_5구멍
+    "part_3hole": 3,      # 나무_3구멍
+    "part_2hole": 4,       # 나무_2구멍
 }
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}

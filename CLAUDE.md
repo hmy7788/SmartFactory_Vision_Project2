@@ -245,7 +245,10 @@ pokayoke-assembly-verification/
 │   └── labels/                   # YOLO 포맷 바운딩 박스
 ├── src/
 │   ├── detection/
-│   │   └── train_yolo.py
+│   │   ├── train_yolo.py
+│   │   ├── auto_label_iconic.py    # ICONIC 데이터 자동 OBB 라벨링
+│   │   ├── crop_dataset.py         # 720x720 크롭 데이터셋 생성 (실험용)
+│   │   └── rt-detr/                # YOLO 대안 비교 실험 (experiment/rt-detr 브랜치, docs/rt-detr-experiment.md 참고)
 │   ├── rule_based/
 │   │   └── hole_count_check.py    # 구멍 개수 기반 형태 판정
 │   ├── classification/            # 딥러닝 분류 트랙 (확정)
@@ -257,6 +260,7 @@ pokayoke-assembly-verification/
 │   └── pipeline.py
 ├── tests/
 │   └── test_state_machine.py      # 가짜 입력으로 상태머신 단위 테스트 (YOLO 불필요)
+├── docs/                           # 실험/작업 기록 (예: RT-DETR 실험 결과, 크롭 데이터셋 노트)
 ├── web/                            # 웹 UI
 ├── checkpoints/
 ├── requirements.txt
