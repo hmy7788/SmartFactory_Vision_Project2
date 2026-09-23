@@ -1,13 +1,13 @@
 """
 preview_dataset.py
 
-datasets/{name}/의 images+labels 전체(train+val)에 박스를 그려서 data/preview/{name}에 저장한다.
-AABB(class xc yc w h)와 OBB(class x1 y1 x2 y2 x3 y3 x4 y4) 라벨 포맷을 모두 지원한다
-(한 줄의 숫자 개수로 자동 판별: 4개면 AABB, 8개면 OBB).
+{dataset}/의 images+labels 전체(train/test 등 images/ 아래 존재하는 모든 split)에 박스를
+그려서 {output}에 저장한다. AABB(class xc yc w h)와 OBB(class x1 y1 x2 y2 x3 y3 x4 y4)
+라벨 포맷을 모두 지원한다 (한 줄의 숫자 개수로 자동 판별: 4개면 AABB, 8개면 OBB).
 
 사용법:
-    python src/detection/preview_dataset.py --dataset datasets/rtdetr_full --output data/preview/rtdetr_full_all
-    python src/detection/preview_dataset.py --dataset datasets/yolo_obb_full --output data/preview/yolo_obb_full_all
+    python src/detection/preview_dataset.py --dataset data/aabb --output data/preview/aabb
+    python src/detection/preview_dataset.py --dataset data/obb --output data/preview/obb
 """
 
 import argparse
@@ -70,7 +70,10 @@ def main():
     output = Path(args.output)
 
     total = 0
-    for split in ("train", "val"):
+    for split_dir in sorted((dataset / "images").iterdir()):
+        if not split_dir.is_dir():
+            continue
+        split = split_dir.name
         img_dir = dataset / "images" / split
         label_dir = dataset / "labels" / split
         if not img_dir.is_dir():
