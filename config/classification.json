@@ -1,0 +1,11 @@
+{
+  "_comment": "완성 조립체 분류(딥러닝) 설정. 클래스 이름은 사진 파일명 앞부분(model_a_001.png → model_a)과 같아야 한다.",
+  "class_to_recipe": {
+    "model_a": "recipe_1",
+    "model_b": "recipe_2",
+    "model_c": "recipe_3"
+  },
+  "unknown_threshold": 0.6,
+  "arch": "resnet18",
+  "img_size": 448
+}
