@@ -8,7 +8,7 @@ from src.app.config import load_config
 from src.app.inspection_service import InspectionService
 from src.contracts.detections import DetectionFrame, OBBDetection
 from src.contracts.inspection import Status
-from src.geometry.mother_frame import mother_pose
+from src.geometry.mother_frame import mother_pose, major_axis
 from src.geometry.roi_builder import build_geometry
 from src.geometry.spatial import rectangle, area, intersection, contains
 from src.process.recipe import load_recipe, Recipe, Placement
@@ -263,6 +263,25 @@ class MVPTests(unittest.TestCase):
         result.names = {0:"나무_5구멍"}
         mapped = from_ultralytics(result,6,1100,{"나무_5구멍":"mother_part"})
         self.assertEqual(mapped.detections[0].class_name,"mother_part")
+
+    def test_adapter_accepts_aabb_detect_result(self):
+        """RT-DETR/YOLO-detect(AABB) 결과: obb 가 None, boxes.xywh 를 각도 0 으로. 세로 박스는 코어의 major_axis 가 90° 로 읽는다."""
+        class Tensor:
+            def __init__(self, data): self.data = data
+            def cpu(self): return self
+            def tolist(self): return self.data
+        result = SimpleNamespace(obb=None,
+                                 boxes=SimpleNamespace(xywh=Tensor([[600,700,1000,160],[400,500,90,300]]),
+                                                       cls=Tensor([2,3]),conf=Tensor([.98,.9])),
+                                 names={0:"bolt_2",1:"bolt_1",2:"mother_part",3:"part_3hole",4:"part_2hole"})
+        frame = from_ultralytics(result,7,1200,{"나무_5구멍":"mother_part"})   # 모델이 우리 이름을 바로 내면 매핑은 무시돼도 통과
+        self.assertEqual([d.class_name for d in frame.detections],["mother_part","part_3hole"])
+        self.assertEqual(frame.detections[1].angle_rad,0.0)
+        width,height,angle = major_axis(frame.detections[1])
+        self.assertEqual((width,height),(300,90))
+        self.assertAlmostEqual(abs(angle),pi/2,places=6)
+        with self.assertRaises(ValueError):
+            from_ultralytics(SimpleNamespace(obb=None,boxes=None,names={}),8,1300)
 
 
 if __name__ == "__main__":

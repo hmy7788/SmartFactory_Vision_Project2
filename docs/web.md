@@ -123,3 +123,16 @@ python -m web.server --source camera --camera 1 --camera-size 1920x1080 --weight
 - 헤더(레시피 select) 는 payload 의 모양이 바뀔 때만 다시 그린다 — 매 프레임 그리면 select 를 조작할 수 없다.
 - 하드 SVG 차트(외부 라이브러리 없음). 데이터가 수백 제품을 넘으면 `/api/analytics` 의 `days` 를 줄이거나 Store 쿼리에 인덱스를 보태야 한다.
 - 브라우저 1개 기준으로 확인했다. 여러 브라우저가 붙으면 `Hub` 가 전부에 fan-out 하지만 부하는 재지 않았다.
+
+## AABB(detect) 가중치로 돌리기 — 2026-09-23
+
+팀원이 준 `best.pt` 는 RT-DETR-l **detect(AABB)** 모델이다 (OBB 아님, 클래스 이름은 우리 이름 그대로). 어댑터가 `.boxes` 도 받도록 바꿨다:
+각도는 0 으로 넣고, 세로로 긴 박스는 코어의 `major_axis` 가 90° 로 읽는다 → **똑바로 놓는(지그) 시연은 그대로 된다.**
+완성체 사진 100장(aabb 라벨)을 코어에 넣어 확인: 똑바로 놓인 60장 전부 자기 레시피 PASS, 다른 레시피 PASS 0건, 기울어진 40장은 보류(오판 없음).
+
+삐뚤게 놓는 경우는 `--refine-angles` (run_live.cmd 의 Tilt 질문에 y): `src/vision/angle_refiner.py` 가 OpenCV 로 Mother·부품 각도를 붙인다.
+같은 100장에서 82장 PASS, 오판 0. 안 되는 18장은 전부 부품이 Mother 아래쪽으로 오게 뒤집어 놓은 사진 — 코어가 각도를 ±90° 로 접어
+H1/H5 를 못 가르는 규약 문제라 코어를 바꿔야 한다(팀 결정). `config/mvp.json` 의 `max_mother_angle_deg`(15) 를 넘는 기울기는 보류.
+
+    python -m scripts.replay_photos ..\aabb                    # 라벨로 코어 판정 재현 (모델 없이)
+    python -m scripts.replay_photos ..\aabb --refine --max-angle 90 --draw out   # 각도 보정 + 그림

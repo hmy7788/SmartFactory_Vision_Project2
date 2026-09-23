@@ -197,7 +197,8 @@ def build(args) -> tuple[Starlette, Pipeline, Store, Hub]:
                              f"카메라만 먼저 보려면 --no-model)")
         size = tuple(int(x) for x in args.camera_size.lower().split("x"))
         factory = lambda recipe, cfg: CameraSource(args.camera, weights, frame_size=size, conf=args.conf,
-                                                    imgsz=args.imgsz, mapping_path=ROOT / "config/class_mapping.json")
+                                                    imgsz=args.imgsz, mapping_path=ROOT / "config/class_mapping.json",
+                                                    refine_angles=args.refine_angles)
         model = weights or "camera-only"
     pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
     return create_app(pipeline, store, hub), pipeline, store, hub
@@ -216,6 +217,8 @@ def parse(argv=None):
     p.add_argument("--camera-size", default="1280x720", help="캡처 해상도 WxH. 카메라가 다른 값을 주면 실제 값으로 바꿔 쓴다")
     p.add_argument("--conf", type=float, default=0.25, help="모델 후보 임계 (판정 임계 0.5 는 config)")
     p.add_argument("--imgsz", type=int, default=640)
+    p.add_argument("--refine-angles", action="store_true",
+                   help="AABB(detect) 가중치일 때 OpenCV 로 Mother·부품 각도를 추정 (삐뚤게 놓은 경우 시험용; 똑바로 놓는 시연엔 불필요)")
     p.add_argument("--no-model", action="store_true", help="가중치 없이 카메라 영상만 (구도·해상도 확인용). 판정은 전부 보류")
     p.add_argument("--fps", type=float, default=10.0)
     p.add_argument("--speed", type=float, default=1.0, help="데모 시나리오 배속 (안정화 창도 같이 나눔, demo 전용)")

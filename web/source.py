@@ -171,9 +171,10 @@ class CameraSource:
 
     def __init__(self, index: int = 0, weights: str | None = "model/yolo_obb_parts.pt", frame_size=(1280, 720),
                  conf: float = 0.25, imgsz: int = 640, mapping_path: str | Path = "config/class_mapping.json",
-                 capture=None, model=None, jpeg_quality: int = 80):
+                 capture=None, model=None, jpeg_quality: int = 80, refine_angles: bool = False):
         self.index, self.weights, self.frame_size = index, weights, tuple(frame_size)
         self.conf, self.imgsz, self.jpeg_quality = conf, imgsz, jpeg_quality
+        self.refine_angles = refine_angles              # AABB(detect) 모델일 때 OpenCV 로 각도를 붙인다 (삐뚤게 놓은 경우용)
         self.mapping = json.loads(Path(mapping_path).read_text(encoding="utf-8")) if Path(mapping_path).exists() else {}
         self._capture, self._model = capture, model
         self._injected = capture is not None        # 테스트용 가짜 캡처는 다시 열지 않는다
@@ -236,6 +237,9 @@ class CameraSource:
             try:
                 result = self._predict(img)
                 frame = from_ultralytics(result, self.frame_id, ts, self.mapping)   # 2, 4
+                if self.refine_angles:
+                    from src.vision.angle_refiner import refine_angles
+                    frame = refine_angles(img, frame)
                 self.last_error = None
             except Exception as error:               # 매핑에 없는 클래스, 모델 오류 등 → 보류 프레임, 서버는 계속
                 self.last_error = f"{type(error).__name__}: {error}"
