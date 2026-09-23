@@ -312,7 +312,8 @@ function kvJudge(p, first) {
 function kvFrame(p) {
   const t = p.timing || {}, pose = p.geometry?.pose;
   return kv("frame_id / ts_ms", `${p.frame_id} / ${p.ts_ms}`) + kv("frame gap", t.gap_ms == null ? "—" : `${t.gap_ms} ms  (max ${t.max_frame_gap_ms})`, t.gap_ms > t.max_frame_gap_ms ? "var(--ng)" : "var(--ok)")
-    + kv("core+store 처리 / fps", `${t.total_ms} ms / ${t.fps}`) + kv("mother pose", pose ? `(${pose.center[0].toFixed(0)}, ${pose.center[1].toFixed(0)}) · W ${pose.width.toFixed(0)} · H ${pose.height.toFixed(0)} · ${(pose.angle_rad * 180 / Math.PI).toFixed(1)}°` : (p.mother_angle_deg != null ? `geometry 없음 · 검출 각도 ${p.mother_angle_deg.toFixed(1)}°` : "geometry 없음"))
+    + kv("core+store 처리 / fps", `${t.total_ms} ms / ${t.fps}`)
+    + (t.infer_ms != null ? kv("모델 추론 / 판정 지연", `${t.infer_ms} ms / ${t.result_age_ms == null ? "—" : t.result_age_ms + " ms 전 프레임"}`, t.infer_ms > 500 ? "var(--hold)" : "var(--ok)") : "") + kv("mother pose", pose ? `(${pose.center[0].toFixed(0)}, ${pose.center[1].toFixed(0)}) · W ${pose.width.toFixed(0)} · H ${pose.height.toFixed(0)} · ${(pose.angle_rad * 180 / Math.PI).toFixed(1)}°` : (p.mother_angle_deg != null ? `geometry 없음 · 검출 각도 ${p.mother_angle_deg.toFixed(1)}°` : "geometry 없음"))
     + kv("stable / material", `${t.stable_ms} ms / ${t.material_stable_ms} ms`) + kv("calibration_status", p.calibration_status, p.calibration_status === "UNVALIDATED_DEFAULTS" ? "var(--hold)" : "var(--ok)")
     + kv("source", p.source_error ? esc(p.source_error) : (p.has_video ? "camera OK" : "demo / jsonl"), p.source_error ? "var(--ng)" : "var(--ok)")
     + kv("product_id / run_id", `${p.product_id} / ${p.run_id}`);

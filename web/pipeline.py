@@ -156,7 +156,7 @@ class Pipeline:
             written = self.store.record(self.product_id, snapshot, mother_angle_deg=angle,
                                         latency_ms=now_ms() - int(frame.timestamp_ms))
             total_ms = (time.perf_counter() - t0) * 1000
-            self.store.frame(self.run_id, infer_ms=0.0, total_ms=total_ms, gap_ms=gap,
+            self.store.frame(self.run_id, infer_ms=getattr(self.source, "infer_ms", None) or 0.0, total_ms=total_ms, gap_ms=gap,
                              hold=snapshot.candidate.status is Status.HOLD)
             self._fps_window = (self._fps_window + [time.perf_counter()])[-30:]
             fps = ((len(self._fps_window) - 1) / (self._fps_window[-1] - self._fps_window[0])
@@ -195,6 +195,8 @@ class Pipeline:
             "calibration_status": snapshot.calibration_status,
             "source_error": getattr(self.source, "last_error", None),     # 카메라·모델 쪽 마지막 오류 (없으면 null)
             "timing": {"gap_ms": gap, "total_ms": round(total_ms, 1), "fps": round(fps, 1),
+                       "infer_ms": getattr(self.source, "infer_ms", None),          # 카메라 모드: 마지막 추론 시간
+                       "result_age_ms": getattr(self.source, "result_age_ms", None),  # 화면에 붙은 판정이 몇 ms 전 것인지
                        "max_frame_gap_ms": self.config["max_frame_gap_ms"],
                        "stable_ms": self.config["stable_duration_ms"],
                        "material_stable_ms": self.config["material_stable_duration_ms"],

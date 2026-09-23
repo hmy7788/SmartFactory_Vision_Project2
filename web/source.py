@@ -10,6 +10,7 @@ timestamp 는 단조 증가 ms (time.monotonic 기준). 벽시계를 쓰지 않�
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import replace
 from math import pi
@@ -171,10 +172,23 @@ class CameraSource:
 
     def __init__(self, index: int = 0, weights: str | None = "model/yolo_obb_parts.pt", frame_size=(1280, 720),
                  conf: float = 0.25, imgsz: int = 640, mapping_path: str | Path = "config/class_mapping.json",
-                 capture=None, model=None, jpeg_quality: int = 80, refine_angles: bool = False):
+                 capture=None, model=None, jpeg_quality: int = 80, refine_angles: bool = False,
+                 threaded: bool | None = None, max_fps: float = 20.0):
         self.index, self.weights, self.frame_size = index, weights, tuple(frame_size)
         self.conf, self.imgsz, self.jpeg_quality = conf, imgsz, jpeg_quality
         self.refine_angles = refine_angles              # AABB(detect) 모델일 때 OpenCV 로 각도를 붙인다 (삐뚤게 놓은 경우용)
+        # 7. 영상과 추론을 분리한다. 영상은 카메라 속도로 계속 내보내고, 추론은 뒤 스레드에서 되는 만큼만 돌려
+        #    가장 최근 결과를 매 프레임에 붙인다. 무거운 모델(RT-DETR, CPU 1~2초)이어도 화면은 끊기지 않고 판정만 늦게 갱신된다.
+        #    주입한 가짜 캡처(테스트)는 기본이 동기 — 프레임마다 추론 결과가 결정적으로 붙어야 하니까.
+        self.threaded = (capture is None) if threaded is None else threaded
+        self.max_fps = max_fps
+        self.infer_ms: float | None = None              # 마지막 추론에 걸린 시간 (진단)
+        self.result_age_ms: int | None = None           # 화면에 붙은 판정이 몇 ms 전 프레임 것인지 (진단)
+        self._latest = None                             # 추론 스레드가 마지막으로 본 (img, ts)
+        self._latest_lock = threading.Lock()
+        self._result = None                             # (detections, ts, input_valid)
+        self._infer_thread = None
+        self._infer_stop = threading.Event()
         self.mapping = json.loads(Path(mapping_path).read_text(encoding="utf-8")) if Path(mapping_path).exists() else {}
         self._capture, self._model = capture, model
         self._injected = capture is not None        # 테스트용 가짜 캡처는 다시 열지 않는다
@@ -216,35 +230,92 @@ class CameraSource:
         except Exception:                            # cv2 없이 가짜 캡처로 돌릴 때
             return None
 
-    def frames(self) -> Iterator[Frame]:
+    def _infer_once(self, img, ts):
+        """한 장 추론 → (detections, ts, input_valid). 오류는 last_error 에 남기고 보류 프레임으로."""
         from src.vision.detection_adapter import from_ultralytics
-        while True:
-            cap = self._open_capture()
-            ok, img = cap.read()
-            ts = now_ms()                            # 1. 캡처 시각
-            self.frame_id += 1
-            if not ok or img is None:
-                self.last_error = "camera read failed"
-                yield DetectionFrame(self.frame_id, ts, (), input_valid=False), None
-                self._reopen(); continue
-            h, w = img.shape[:2]
-            if (w, h) != self.frame_size:            # 카메라가 요청한 해상도를 안 줄 수 있다 → 실제 크기로 (오버레이 좌표계)
-                self.frame_size = (w, h)
-            if self.weights is None and self._model is None:      # 6. 모델 없음 — 영상만
-                self.last_error = None
-                yield DetectionFrame(self.frame_id, ts, ()), self._encode(img)
-                continue
-            try:
-                result = self._predict(img)
-                frame = from_ultralytics(result, self.frame_id, ts, self.mapping)   # 2, 4
-                if self.refine_angles:
-                    from src.vision.angle_refiner import refine_angles
-                    frame = refine_angles(img, frame)
-                self.last_error = None
-            except Exception as error:               # 매핑에 없는 클래스, 모델 오류 등 → 보류 프레임, 서버는 계속
-                self.last_error = f"{type(error).__name__}: {error}"
-                frame = DetectionFrame(self.frame_id, ts, (), input_valid=False)
-            yield frame, self._encode(img)
+        t0 = time.perf_counter()
+        try:
+            result = self._predict(img)
+            frame = from_ultralytics(result, 0, ts, self.mapping)                 # 2, 4
+            if self.refine_angles:
+                from src.vision.angle_refiner import refine_angles
+                frame = refine_angles(img, frame)
+            self.last_error = None
+            out = (frame.detections, ts, True)
+        except Exception as error:                   # 매핑에 없는 클래스, 모델 오류 등 → 보류 프레임, 서버는 계속
+            self.last_error = f"{type(error).__name__}: {error}"
+            out = ((), ts, False)
+        self.infer_ms = round((time.perf_counter() - t0) * 1000, 1)
+        return out
+
+    def _infer_loop(self) -> None:
+        """추론 스레드: 가장 최근 프레임만 본다 (밀린 프레임은 버린다)."""
+        seen_ts = None
+        while not self._infer_stop.is_set():
+            with self._latest_lock:
+                latest = self._latest
+            if latest is None or latest[1] == seen_ts:
+                time.sleep(0.005); continue
+            img, ts = latest
+            seen_ts = ts
+            self._result = self._infer_once(img, ts)
+
+    def _start_infer_thread(self) -> None:
+        if self._infer_thread is None or not self._infer_thread.is_alive():
+            self._infer_stop.clear()
+            self._infer_thread = threading.Thread(target=self._infer_loop, name="infer", daemon=True)
+            self._infer_thread.start()
+
+    def close(self) -> None:
+        self._infer_stop.set()
+
+    def frames(self) -> Iterator[Frame]:
+        has_model = not (self.weights is None and self._model is None)
+        if has_model and self.threaded:
+            self._open_model()                       # 첫 프레임 전에 가중치를 읽어 둔다 (스레드 안에서 실패하면 보기 어렵다)
+            self._start_infer_thread()
+        min_interval = 1.0 / self.max_fps if self.max_fps else 0.0
+        last_yield = 0.0
+        try:
+            while True:
+                cap = self._open_capture()
+                ok, img = cap.read()
+                ts = now_ms()                            # 1. 캡처 시각
+                self.frame_id += 1
+                if not ok or img is None:
+                    self.last_error = "camera read failed"
+                    yield DetectionFrame(self.frame_id, ts, (), input_valid=False), None
+                    self._reopen(); continue
+                h, w = img.shape[:2]
+                if (w, h) != self.frame_size:            # 카메라가 요청한 해상도를 안 줄 수 있다 → 실제 크기로 (오버레이 좌표계)
+                    self.frame_size = (w, h)
+                if not has_model:                        # 6. 모델 없음 — 영상만
+                    self.last_error = None
+                    yield DetectionFrame(self.frame_id, ts, ()), self._encode(img)
+                    continue
+                if self.threaded:                        # 7. 영상은 계속, 판정은 최신 추론 결과를 붙인다
+                    with self._latest_lock:
+                        self._latest = (img, ts)
+                    res = self._result
+                    if res is None:                      # 첫 추론 전 — 검출 없음(코어는 Mother 없음 → 보류)
+                        frame = DetectionFrame(self.frame_id, ts, ())
+                        self.result_age_ms = None
+                    else:
+                        dets, rts, valid = res
+                        frame = DetectionFrame(self.frame_id, ts, dets, input_valid=valid)
+                        self.result_age_ms = int(ts - rts)
+                    if min_interval:                     # 웹소켓·JPEG 부하를 제한 (카메라 30fps → 최대 max_fps)
+                        wait = min_interval - (time.perf_counter() - last_yield)
+                        if wait > 0:
+                            time.sleep(wait)
+                        last_yield = time.perf_counter()
+                    yield frame, self._encode(img)
+                    continue
+                dets, _, valid = self._infer_once(img, ts)
+                self.result_age_ms = 0
+                yield DetectionFrame(self.frame_id, ts, dets, input_valid=valid), self._encode(img)
+        finally:
+            self._infer_stop.set()
 
     def _reopen(self) -> None:
         if self._injected:

@@ -41,7 +41,8 @@ if /i "%TILT%"=="y" set "EXTRA=--refine-angles"
 echo [3/3] starting.  Browser: http://localhost:8000   Stop: Ctrl+C here
 echo      If run_ui.cmd (demo) is still open, close it first - same port.
 start "" http://localhost:8000
-%PY% -m web.server --source camera --camera %CAM% --camera-size 1280x720 --weights "%W%" %EXTRA%
+rem imgsz 480: CPU inference ~2x faster than 640 (RT-DETR-l is heavy). Video streams at camera speed regardless.
+%PY% -m web.server --source camera --camera %CAM% --camera-size 1280x720 --weights "%W%" --imgsz 480 %EXTRA%
 goto :end
 
 :nopt

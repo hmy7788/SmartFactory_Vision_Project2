@@ -156,6 +156,29 @@ class CameraSourceTests(unittest.TestCase):
         self.assertTrue(frame.input_valid); self.assertEqual(frame.detections, ())
         self.assertIsNone(src.last_error)
 
+    def test_threaded_mode_streams_faster_than_the_model(self):
+        """무거운 모델(추론 300ms)이어도 영상은 계속 나오고, 판정은 뒤늦게 붙는다."""
+        result = _Result(_Obb([[600, 700, 1000, 160, 0]], [0], [0.9]))
+        model = _Model(result, delay=0.3)
+        src = CameraSource(capture=_Cap([_img()] * 200), model=model, mapping_path=self.mapping, threaded=True, max_fps=0)
+        t0 = time.time(); frames = []
+        for frame, jpeg in src.frames():
+            frames.append(frame)
+            if len(frames) >= 30 or time.time() - t0 > 3:
+                break
+        src.close()
+        elapsed = time.time() - t0
+        self.assertGreaterEqual(len(frames), 30)
+        self.assertLess(elapsed, 0.3 * 30 / 2, f"30프레임에 {elapsed:.2f}s — 추론과 직렬로 묶여 있다")
+        self.assertLessEqual(model.calls, 4)                       # 밀린 프레임은 건너뛴다
+        self.assertEqual(frames[0].detections, ())                  # 첫 추론 전엔 검출 없음
+        waited = time.time()
+        while src._result is None and time.time() - waited < 2:
+            time.sleep(0.01)
+        self.assertIsNotNone(src._result)
+        self.assertEqual(src._result[0][0].class_name, "mother_part")
+        self.assertIsNotNone(src.infer_ms)
+
     def test_core_runs_on_camera_frames(self):
         """가짜 카메라 프레임이 코어까지 통과해 재료 판정을 낸다."""
         rows = [[600, 700, 1000, 160, 0.0], [120, 120, 80, 80, 0.0], [520, 120, 80, 80, 0.0],
