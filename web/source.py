@@ -2,7 +2,7 @@
 
     DemoSource    카메라·모델 없이 합성 검출로 시나리오를 돌린다 (UI 개발·발표 리허설용)
     JsonlSource   기록해 둔 DetectionFrame JSONL 을 재생한다 (scripts/replay_detections.py 입력 형식)
-    CameraSource  실제 웹캠 + YOLO-OBB. 모델 담당이 채운다 — 어디를 채우면 되는지 아래에 적어 뒀다.
+    CameraSource  실제 웹캠 + YOLO-OBB. 가중치 파일(model/yolo_obb_parts.pt)만 있으면 붙는다.
 
 세 소스 모두 같은 인터페이스라 server.py 는 --source 옵션만 다르다.
 timestamp 는 단조 증가 ms (time.monotonic 기준). 벽시계를 쓰지 않는다 — 코어의 frame gap 판정이 이 값에 걸려 있다.
@@ -152,33 +152,95 @@ class JsonlSource:
                 return
 
 
-# ── 실제 카메라 (모델 담당이 채운다) ─────────────────────
+# ── 실제 카메라 ────────────────────────────────────────
 class CameraSource:
-    """웹캠 → YOLO-OBB → DetectionFrame. 아래 뼈대대로 채우면 server.py --source camera 로 바로 붙는다.
+    """웹캠 → YOLO-OBB → DetectionFrame + JPEG. 가중치 파일(model/yolo_obb_parts.pt)만 있으면 붙는다.
 
-        import cv2
-        from ultralytics import YOLO
-        from src.vision.detection_adapter import from_ultralytics
+    지키는 것:
+      1. timestamp 는 캡처 직후 now_ms(). 추론이 끝난 시각이 아니다 — 코어의 frame gap 판정 기준이라서.
+      2. ultralytics Results 의 xywhr 은 원본 픽셀로 돌아온다 (imgsz 로 줄여 추론해도). 그대로 어댑터에 넘긴다.
+      3. 후보 conf 는 낮게(0.25). 판정 임계 0.5 는 config 가 거른다 — 진단 탭의 confidence 분포가 임계 근처를 보여 줘야 임계를 고를 수 있다.
+      4. 한글 클래스명 → 영문 5클래스는 config/class_mapping.json 으로. 매핑에 없는 이름이 나오면 어댑터가 ValueError → 이 소스가 잡아서 input_valid=False 로 낸다 (코어는 HOLD).
+      5. 카메라 read 실패 → input_valid=False 프레임을 내고 카메라를 다시 연다. 서버는 죽지 않는다.
 
-        cap = cv2.VideoCapture(index); model = YOLO(weights); mapping = json.load(open("config/class_mapping.json"))
-        while True:
-            ok, img = cap.read()
-            ts = now_ms()                                   # 캡처 시각. 추론이 끝난 시각이 아니다
-            result = model.predict(img, conf=0.25, verbose=False)[0]     # 후보는 낮게, 판정 임계는 config 가 0.5 로 거른다
-            frame = from_ultralytics(result, self.frame_id, ts, mapping)  # xywhr 이 원본 픽셀인지 확인 (resize 했다면 복원)
-            jpeg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes()
-            yield frame, jpeg
-
-    카메라 오류 시에는 DetectionFrame(frame_id, ts, (), input_valid=False) 를 내보낸다 (docs/state_machine_handoff.md).
+    capture / model 은 테스트에서 가짜를 꽂을 수 있게 주입 가능. 실제 실행에서는 None 으로 두면 cv2·ultralytics 를 연다.
     """
     has_video = True
 
-    def __init__(self, index: int = 0, weights: str = "model/yolo_obb_parts.pt", frame_size=(1280, 720)):
+    def __init__(self, index: int = 0, weights: str = "model/yolo_obb_parts.pt", frame_size=(1280, 720),
+                 conf: float = 0.25, imgsz: int = 640, mapping_path: str | Path = "config/class_mapping.json",
+                 capture=None, model=None, jpeg_quality: int = 80):
         self.index, self.weights, self.frame_size = index, weights, tuple(frame_size)
+        self.conf, self.imgsz, self.jpeg_quality = conf, imgsz, jpeg_quality
+        self.mapping = json.loads(Path(mapping_path).read_text(encoding="utf-8")) if Path(mapping_path).exists() else {}
+        self._capture, self._model = capture, model
+        self._injected = capture is not None        # 테스트용 가짜 캡처는 다시 열지 않는다
         self.frame_id = 0
+        self.last_error: str | None = None          # 진단용 — 마지막으로 프레임을 못 만든 이유
 
-    def reset(self, recipe) -> None:
+    def reset(self, recipe) -> None:                 # 카메라는 레시피와 무관
         pass
 
+    # ── 장치·모델 열기 (지연 로딩: import 비용을 서버 시작이 아니라 첫 프레임에) ──
+    def _open_capture(self):
+        if self._capture is None:
+            import cv2
+            cap = cv2.VideoCapture(self.index)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_size[0])
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_size[1])
+            self._capture = cap
+        return self._capture
+
+    def _open_model(self):
+        if self._model is None:
+            from ultralytics import YOLO
+            self._model = YOLO(self.weights)
+        return self._model
+
+    def _predict(self, img):
+        model = self._open_model()
+        # ultralytics: model.predict(...) → list[Results]. 주입한 가짜 모델은 그냥 callable 로 취급.
+        if hasattr(model, "predict"):
+            return model.predict(img, conf=self.conf, imgsz=self.imgsz, verbose=False)[0]
+        return model(img)
+
+    def _encode(self, img) -> bytes | None:
+        try:
+            import cv2
+            ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
+            return buf.tobytes() if ok else None
+        except Exception:                            # cv2 없이 가짜 캡처로 돌릴 때
+            return None
+
     def frames(self) -> Iterator[Frame]:
-        raise NotImplementedError("CameraSource: 모델 담당이 web/source.py 의 docstring 대로 채운다")
+        from src.vision.detection_adapter import from_ultralytics
+        while True:
+            cap = self._open_capture()
+            ok, img = cap.read()
+            ts = now_ms()                            # 1. 캡처 시각
+            self.frame_id += 1
+            if not ok or img is None:
+                self.last_error = "camera read failed"
+                yield DetectionFrame(self.frame_id, ts, (), input_valid=False), None
+                self._reopen(); continue
+            h, w = img.shape[:2]
+            if (w, h) != self.frame_size:            # 카메라가 요청한 해상도를 안 줄 수 있다 → 실제 크기로 (오버레이 좌표계)
+                self.frame_size = (w, h)
+            try:
+                result = self._predict(img)
+                frame = from_ultralytics(result, self.frame_id, ts, self.mapping)   # 2, 4
+                self.last_error = None
+            except Exception as error:               # 매핑에 없는 클래스, 모델 오류 등 → 보류 프레임, 서버는 계속
+                self.last_error = f"{type(error).__name__}: {error}"
+                frame = DetectionFrame(self.frame_id, ts, (), input_valid=False)
+            yield frame, self._encode(img)
+
+    def _reopen(self) -> None:
+        if self._injected:
+            return
+        try:
+            if self._capture is not None and hasattr(self._capture, "release"):
+                self._capture.release()
+        finally:
+            self._capture = None
+            time.sleep(0.5)

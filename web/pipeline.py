@@ -193,6 +193,7 @@ class Pipeline:
             "detections": [_jsonable(asdict(d)) for d in frame.detections],
             "mother_angle_deg": angle,
             "calibration_status": snapshot.calibration_status,
+            "source_error": getattr(self.source, "last_error", None),     # 카메라·모델 쪽 마지막 오류 (없으면 null)
             "timing": {"gap_ms": gap, "total_ms": round(total_ms, 1), "fps": round(fps, 1),
                        "max_frame_gap_ms": self.config["max_frame_gap_ms"],
                        "stable_ms": self.config["stable_duration_ms"],

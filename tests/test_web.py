@@ -13,7 +13,7 @@ from src.app.config import load_config
 from src.app.inspection_service import InspectionService
 from src.contracts.inspection import Status
 from src.process.recipe import load_recipe
-from web.source import DemoSource, JsonlSource, demo_config
+from web.source import CameraSource, DemoSource, JsonlSource, demo_config, now_ms
 from web.store import Store
 
 try:
@@ -78,6 +78,87 @@ class DemoSourceTests(unittest.TestCase):
             self.assertEqual([f.frame_id for f in frames], [1, 2, 3])
             self.assertTrue(frames[0].timestamp_ms <= frames[1].timestamp_ms <= frames[2].timestamp_ms)
             self.assertEqual(frames[0].detections[0].class_name, "mother_part")
+
+
+# ── 가짜 카메라 · 가짜 ultralytics 결과 (가중치 없이 카메라 경로 전체를 돈다) ──
+class _T:
+    """ultralytics 텐서 흉내: .cpu().tolist() 만 있으면 어댑터가 만족한다."""
+    def __init__(self, rows): self.rows = rows
+    def cpu(self): return self
+    def tolist(self): return self.rows
+
+
+class _Obb:
+    def __init__(self, xywhr, cls, conf): self.xywhr, self.cls, self.conf = _T(xywhr), _T(cls), _T(conf)
+
+
+class _Result:
+    """model.predict(img)[0] 이 돌려주는 Results 흉내. names 는 학습 때 쓴 한글 클래스."""
+    names = {0: "나무_5구멍", 1: "볼트_노랑", 2: "볼트_주황", 3: "나무_2구멍", 4: "나무_3구멍"}
+    def __init__(self, obb): self.obb = obb
+
+
+class _Model:
+    def __init__(self, result, delay=0.0): self.result, self.delay, self.calls = result, delay, 0
+    def predict(self, img, **kw):
+        self.calls += 1; time.sleep(self.delay); return [self.result]
+
+
+class _Cap:
+    def __init__(self, frames): self.frames, self.i, self.released = frames, 0, False
+    def read(self):
+        fr = self.frames[min(self.i, len(self.frames) - 1)]; self.i += 1
+        return (fr is not None), fr
+    def release(self): self.released = True
+
+
+def _img(w=640, h=480):
+    import numpy as np
+    return np.zeros((h, w, 3), dtype=np.uint8)
+
+
+class CameraSourceTests(unittest.TestCase):
+    def setUp(self):
+        self.mapping = ROOT / "config/class_mapping.json"
+
+    def test_korean_classes_mapped_and_timestamp_is_capture_time(self):
+        result = _Result(_Obb([[600, 700, 1000, 160, 0.0], [200, 700, 80, 80, 0.0]], [0, 1], [0.97, 0.9]))
+        model = _Model(result, delay=0.05)                       # 추론 50ms
+        src = CameraSource(capture=_Cap([_img()]), model=model, mapping_path=self.mapping)
+        (frame, jpeg), = [next(src.frames())]
+        self.assertEqual([d.class_name for d in frame.detections], ["mother_part", "bolt_1"])   # 한글 → 영문
+        self.assertTrue(frame.input_valid)
+        self.assertLess(now_ms() - frame.timestamp_ms, 200)     # 캡처 시각이지 추론 뒤가 아니다
+        self.assertEqual(src.frame_size, (640, 480))            # 실제 캡처 크기로 바뀐다 (오버레이 좌표계)
+        self.assertTrue(jpeg is None or jpeg[:2] == b"\xff\xd8")  # cv2 있으면 JPEG
+
+    def test_camera_read_failure_yields_invalid_frame_not_crash(self):
+        result = _Result(_Obb([], [], []))
+        src = CameraSource(capture=_Cap([None, _img()]), model=_Model(result), mapping_path=self.mapping)
+        it = src.frames()
+        f1, _ = next(it)
+        self.assertFalse(f1.input_valid); self.assertEqual(src.last_error, "camera read failed")
+        f2, _ = next(it)
+        self.assertTrue(f2.input_valid); self.assertIsNone(src.last_error)
+        self.assertLess(f1.frame_id, f2.frame_id)
+
+    def test_unknown_class_name_becomes_hold_frame(self):
+        bad = _Result(_Obb([[10, 10, 5, 5, 0]], [0], [0.9])); bad.names = {0: "너트_파랑"}   # 제외된 클래스
+        src = CameraSource(capture=_Cap([_img()]), model=_Model(bad), mapping_path=self.mapping)
+        frame, _ = next(src.frames())
+        self.assertFalse(frame.input_valid)
+        self.assertIn("ValueError", src.last_error)
+
+    def test_core_runs_on_camera_frames(self):
+        """가짜 카메라 프레임이 코어까지 통과해 재료 판정을 낸다."""
+        rows = [[600, 700, 1000, 160, 0.0], [120, 120, 80, 80, 0.0], [520, 120, 80, 80, 0.0],
+                [330, 120, 320, 90, 0.0], [730, 120, 500, 90, 0.0]]
+        result = _Result(_Obb(rows, [0, 1, 2, 3, 4], [0.97, 0.9, 0.9, 0.88, 0.88]))   # recipe_1 재료 정확히
+        src = CameraSource(capture=_Cap([_img(1200, 900)]), model=_Model(result), mapping_path=self.mapping)
+        config = demo_config(load_config(ROOT / "config/mvp.json"), 4)
+        service = InspectionService(config, load_recipe(ROOT / "config/recipes/recipe_1.json"))
+        last = run_until(service, src, lambda s: s.phase.value == "ASSEMBLING", seconds=5)
+        self.assertEqual(last.phase.value, "ASSEMBLING")        # 재료 READY 가 유지되어 조립 단계로
 
 
 @unittest.skipUnless(HAVE_STARLETTE, "starlette not installed")

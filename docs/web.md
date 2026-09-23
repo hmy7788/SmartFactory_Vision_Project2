@@ -9,8 +9,8 @@ pip install -r requirements.txt          # fastapi(→ starlette) + uvicorn[stan
 python -m web.server                     # 합성 데모, http://localhost:8000
 python -m web.server --speed 2           # 데모 시나리오 2배속 (발표 리허설)
 python -m web.server --source jsonl --jsonl detections.jsonl     # 기록한 검출 재생
-python -m web.server --source camera --weights model/yolo_obb_parts.pt   # CameraSource 를 채운 뒤
-python -m unittest tests.test_web        # 8개, 약 20초
+python -m web.server --source camera     # 웹캠 + YOLO-OBB (model/yolo_obb_parts.pt 가 있어야 함)
+python -m unittest tests.test_web        # 13개, 약 20초
 ```
 
 DB 는 `data/pokayoke.db` 에 생긴다 (`--db` 로 바꿈). 저장 규칙은 [storage.md](storage.md).
@@ -25,7 +25,7 @@ DB 는 `data/pokayoke.db` 에 생긴다 (`--db` 로 바꿈). 저장 규칙은 [s
 
 | 파일 | 하는 일 |
 |---|---|
-| `web/source.py` | `DemoSource`(합성 시나리오) · `JsonlSource`(기록 재생) · `CameraSource`(**모델 담당이 채움**). 셋 다 `frames()` 가 `(DetectionFrame, JPEG|None)` 을 낸다 |
+| `web/source.py` | `DemoSource`(합성 시나리오) · `JsonlSource`(기록 재생) · `CameraSource`(웹캠+YOLO, 가중치만 있으면 됨). 셋 다 `frames()` 가 `(DetectionFrame, JPEG|None)` 을 낸다 |
 | `web/pipeline.py` | 프레임마다 코어 `update()` → Store 기록 → payload 생성. 버튼 명령(레시피 선택·새 작업·작업 완료)은 프레임 사이에 처리 |
 | `web/server.py` | Starlette 앱. `/ws` 로 payload 를 밀고, `/api/*` 로 Store 를 읽는다 |
 | `web/static/` | `index.html` 껍데기, `app.js` 화면 전부(해시 라우팅 SPA), `app.css` |
@@ -79,15 +79,29 @@ DB 는 `data/pokayoke.db` 에 생긴다 (`--db` 로 바꿈). 저장 규칙은 [s
 
 WebSocket 이 안 열리면(`websockets` 미설치 등) 화면이 알아서 200ms 폴링(`/api/state`) 으로 넘어간다. 헤더의 점이 초록이면 WS, 노랑이면 폴링.
 
-## CameraSource 채우기 (모델 담당)
+## 카메라 붙이기 — 시연 전 체크리스트
 
-`web/source.py` 의 `CameraSource.frames()` 하나만 채우면 `--source camera` 로 붙는다. docstring 에 뼈대가 있다. 지킬 것:
+`CameraSource` 는 구현돼 있다. **가중치 파일 하나만** 있으면 된다:
 
-1. `timestamp_ms` 는 **캡처 시각**, `now_ms()`(monotonic) 로. 추론이 끝난 시각이 아니다. 코어의 frame gap(250ms) 판정이 이 값에 걸려 있다.
-2. `from_ultralytics(result, frame_id, ts, mapping)` 의 xywhr 이 **원본 픽셀** 이어야 한다. 추론 전에 resize 했으면 되돌린다. `frame_size` 도 원본 해상도.
-3. 모델 conf 는 낮게(0.25) 두고 판정 임계는 config `confidence_threshold`(0.5) 가 거른다 — 진단 탭의 confidence 분포가 임계 근처 검출을 보여 줘야 임계를 고를 수 있다.
-4. 카메라 오류면 `DetectionFrame(frame_id, ts, (), input_valid=False)` 를 낸다 → 코어가 `INPUT_UNAVAILABLE` HOLD.
-5. `jpeg` 를 같이 내면 `/video` 가 살아나고 오버레이가 실제 영상 위에 얹힌다. JPEG 품질 80, 인코딩 시간은 `total_ms` 에 포함된다.
+```bash
+pip install -r requirements.txt                      # ultralytics, opencv, uvicorn[standard], fastapi
+cp <받은 파일>.pt model/yolo_obb_parts.pt
+python -m web.server --source camera                 # 카메라 0번, 1280x720, conf 0.25, imgsz 640
+python -m web.server --source camera --camera 1 --camera-size 1920x1080 --weights model/best.pt
+```
+
+준비물이 빠지면 서버가 시작할 때 한국어로 알려 주고 멈춘다 (패키지 없음 / 가중치 없음). 30분 뒤에 "왜 보류만 뜨지" 하는 일을 막으려고.
+
+시연 전에 순서대로 확인할 것:
+
+1. **클래스 이름** — 모델이 내는 이름이 `config/class_mapping.json` 의 왼쪽(한글)과 같아야 한다. 다르면 그 검출은 버려지고 프레임이 `input_valid=False` 가 되어 화면이 "보류"에 머문다. 진단 탭 `source` 줄에 `ValueError: Invalid detection identity/class` 가 뜨면 이거다.
+2. **ROI 보정** — `config/mvp.json` 의 `hole_alphas`, `bolt_half_*`, `part_rois` 는 실물로 잰 값이 아니다 (`calibration_status: UNVALIDATED_DEFAULTS`). 카메라를 고정한 뒤 진단 탭 → "오버레이 상세"를 켜고, 실제로 꽂은 볼트·파트가 사각형 안에 들어오도록 값을 맞춘다. 이걸 안 하면 맞게 꽂아도 "아직"으로 나온다. 맞추고 나면 `calibration_status` 를 바꿔 둔다.
+3. **confidence** — 진단 탭 "클래스별 confidence" 차트에서 정상 검출이 0.5 위에 안정적으로 모이는지. 밑에 걸치면 판정이 깜빡인다. 그때 `--conf` 가 아니라 config 의 `confidence_threshold` 를 조정한다 (후보와 판정 임계는 다른 값).
+4. **frame gap** — 진단 탭 `frame gap` 이 250ms 를 자주 넘으면(느린 노트북 CPU) `max_frame_gap_ms` 를 올리거나 `--imgsz 480` 으로 줄인다. 넘을 때마다 HOLD 가 뜬다.
+5. **Mother 각도** — 지그가 화면 수평에서 ±15° 안에 있어야 한다. 넘으면 호박색 HOLD.
+6. **조명·배경** — 학습 데이터와 같은 검은 배경. 진단 탭에서 오검출(없는 물체가 잡힘)이 보이면 조명부터.
+
+알려진 모델 이슈: 9/22 중간 모델은 3구 파트를 Mother 로 오분류했다 (`docs/validation_2026-09-22.md`). 그러면 `MULTIPLE_MOTHERS` HOLD 가 뜬다. 새 모델에서 이게 해결됐는지가 첫 확인 사항.
 
 `--source jsonl` 로 기록을 재생하면 카메라 없이도 실제 검출로 화면을 확인할 수 있다 (`scripts/replay_detections.py` 와 같은 형식).
 

@@ -314,6 +314,7 @@ function kvFrame(p) {
   return kv("frame_id / ts_ms", `${p.frame_id} / ${p.ts_ms}`) + kv("frame gap", t.gap_ms == null ? "—" : `${t.gap_ms} ms  (max ${t.max_frame_gap_ms})`, t.gap_ms > t.max_frame_gap_ms ? "var(--ng)" : "var(--ok)")
     + kv("core+store 처리 / fps", `${t.total_ms} ms / ${t.fps}`) + kv("mother pose", pose ? `(${pose.center[0].toFixed(0)}, ${pose.center[1].toFixed(0)}) · W ${pose.width.toFixed(0)} · H ${pose.height.toFixed(0)} · ${(pose.angle_rad * 180 / Math.PI).toFixed(1)}°` : (p.mother_angle_deg != null ? `geometry 없음 · 검출 각도 ${p.mother_angle_deg.toFixed(1)}°` : "geometry 없음"))
     + kv("stable / material", `${t.stable_ms} ms / ${t.material_stable_ms} ms`) + kv("calibration_status", p.calibration_status, p.calibration_status === "UNVALIDATED_DEFAULTS" ? "var(--hold)" : "var(--ok)")
+    + kv("source", p.source_error ? esc(p.source_error) : (p.has_video ? "camera OK" : "demo / jsonl"), p.source_error ? "var(--ng)" : "var(--ok)")
     + kv("product_id / run_id", `${p.product_id} / ${p.run_id}`);
 }
 function issuesHtml(p) { const iss = p.candidate.issues || []; return iss.length ? iss.map((i) => `<div class="issue"><span class="c" style="color:${i.code.startsWith("MISSING") ? "var(--wait)" : (p.candidate.status === "HOLD" ? "var(--hold)" : "var(--ng)")}">${i.code}</span><span>${i.hole_id ? "H" + i.hole_id : "—"}</span><span>expected ${esc(i.expected)}</span><span>observed ${esc(i.observed)}</span></div>`).join("") : `<div class="note">issues 없음</div>`; }

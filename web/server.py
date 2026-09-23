@@ -12,6 +12,7 @@ Starlette 로 짰다. FastAPI 는 Starlette 위의 얇은 층이고(설치하면
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import asyncio
 import contextlib
 import json
@@ -186,7 +187,14 @@ def build(args) -> tuple[Starlette, Pipeline, Store, Hub]:
     elif args.source == "jsonl":
         factory, model = (lambda recipe, cfg: JsonlSource(args.jsonl)), f"jsonl:{args.jsonl}"
     else:
-        factory, model = (lambda recipe, cfg: CameraSource(args.camera, args.weights)), args.weights
+        missing = [m for m in ("cv2", "ultralytics") if importlib.util.find_spec(m) is None]
+        if missing:
+            raise SystemExit(f"--source camera 에 필요한 패키지가 없습니다: {', '.join(missing)}  →  pip install -r requirements.txt")
+        if not (ROOT / args.weights).exists() and not Path(args.weights).exists():
+            raise SystemExit(f"가중치 파일이 없습니다: {args.weights}  (모델 담당에게 받아 model/ 에 두고 --weights 로 지정)")
+        size = tuple(int(x) for x in args.camera_size.lower().split("x"))
+        factory, model = (lambda recipe, cfg: CameraSource(args.camera, args.weights, frame_size=size, conf=args.conf,
+                                                            imgsz=args.imgsz, mapping_path=ROOT / "config/class_mapping.json")), args.weights
     pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
     return create_app(pipeline, store, hub), pipeline, store, hub
 
@@ -201,6 +209,9 @@ def parse(argv=None):
     p.add_argument("--jsonl", default="detections.jsonl")
     p.add_argument("--camera", type=int, default=0)
     p.add_argument("--weights", default="model/yolo_obb_parts.pt")
+    p.add_argument("--camera-size", default="1280x720", help="캡처 해상도 WxH. 카메라가 다른 값을 주면 실제 값으로 바꿔 쓴다")
+    p.add_argument("--conf", type=float, default=0.25, help="모델 후보 임계 (판정 임계 0.5 는 config)")
+    p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--fps", type=float, default=10.0)
     p.add_argument("--speed", type=float, default=1.0, help="데모 시나리오 배속 (안정화 창도 같이 나눔, demo 전용)")
     p.add_argument("--host", default="0.0.0.0")
