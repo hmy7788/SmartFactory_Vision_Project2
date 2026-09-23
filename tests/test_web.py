@@ -149,6 +149,13 @@ class CameraSourceTests(unittest.TestCase):
         self.assertFalse(frame.input_valid)
         self.assertIn("ValueError", src.last_error)
 
+    def test_no_model_streams_video_with_empty_detections(self):
+        """가중치 없이 카메라만: 검출 0개·input_valid=True, 모델은 한 번도 안 부른다."""
+        src = CameraSource(weights=None, capture=_Cap([_img()]), model=None, mapping_path=self.mapping)
+        frame, jpeg = next(src.frames())
+        self.assertTrue(frame.input_valid); self.assertEqual(frame.detections, ())
+        self.assertIsNone(src.last_error)
+
     def test_core_runs_on_camera_frames(self):
         """가짜 카메라 프레임이 코어까지 통과해 재료 판정을 낸다."""
         rows = [[600, 700, 1000, 160, 0.0], [120, 120, 80, 80, 0.0], [520, 120, 80, 80, 0.0],

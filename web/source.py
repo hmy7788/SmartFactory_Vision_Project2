@@ -162,12 +162,14 @@ class CameraSource:
       3. 후보 conf 는 낮게(0.25). 판정 임계 0.5 는 config 가 거른다 — 진단 탭의 confidence 분포가 임계 근처를 보여 줘야 임계를 고를 수 있다.
       4. 한글 클래스명 → 영문 5클래스는 config/class_mapping.json 으로. 매핑에 없는 이름이 나오면 어댑터가 ValueError → 이 소스가 잡아서 input_valid=False 로 낸다 (코어는 HOLD).
       5. 카메라 read 실패 → input_valid=False 프레임을 내고 카메라를 다시 연다. 서버는 죽지 않는다.
+      6. weights=None 이면 모델 없이 영상만 낸다 (검출 0개). 가중치를 받기 전에 카메라·구도·해상도를 확인하는 용도.
+         코어는 Mother 가 없으니 HOLD(보류)를 내고, 화면에는 실제 영상이 뜬다.
 
     capture / model 은 테스트에서 가짜를 꽂을 수 있게 주입 가능. 실제 실행에서는 None 으로 두면 cv2·ultralytics 를 연다.
     """
     has_video = True
 
-    def __init__(self, index: int = 0, weights: str = "model/yolo_obb_parts.pt", frame_size=(1280, 720),
+    def __init__(self, index: int = 0, weights: str | None = "model/yolo_obb_parts.pt", frame_size=(1280, 720),
                  conf: float = 0.25, imgsz: int = 640, mapping_path: str | Path = "config/class_mapping.json",
                  capture=None, model=None, jpeg_quality: int = 80):
         self.index, self.weights, self.frame_size = index, weights, tuple(frame_size)
@@ -226,6 +228,10 @@ class CameraSource:
             h, w = img.shape[:2]
             if (w, h) != self.frame_size:            # 카메라가 요청한 해상도를 안 줄 수 있다 → 실제 크기로 (오버레이 좌표계)
                 self.frame_size = (w, h)
+            if self.weights is None and self._model is None:      # 6. 모델 없음 — 영상만
+                self.last_error = None
+                yield DetectionFrame(self.frame_id, ts, ()), self._encode(img)
+                continue
             try:
                 result = self._predict(img)
                 frame = from_ultralytics(result, self.frame_id, ts, self.mapping)   # 2, 4
