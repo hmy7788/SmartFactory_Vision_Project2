@@ -51,10 +51,18 @@ button { font: inherit; cursor: pointer; }
 .period button.on { background: #fff; color: var(--navy); font-weight: 700; }
 
 #main { position: absolute; left: var(--sb); top: var(--hd); right: 0; bottom: 0; padding: 24px; overflow: auto; }
-.grid { display: grid; gap: 24px; height: 100%; }
-.grid.work { grid-template-columns: 848fr 896fr; grid-template-rows: 560fr 372fr; }
+/* 한 탭 = 한 화면. 화면이 짧으면 페이지가 스크롤되고, 카드 내용은 잘리지 않는다.
+   height 가 아니라 min-height 인 이유: 내용이 화면보다 크면 격자가 늘어나야 카드가 안 잘린다. */
+/* align-content 는 두지 않는다 — 기본값(stretch)이라야 이력 탭처럼 행 높이가 auto 인 격자에서
+   양쪽 카드가 같은 높이로 늘어난다. start 로 두면 카드마다 높이가 달라져 칸이 어긋난다. */
+.grid { display: grid; gap: 24px; min-height: 100%; }
+/* 아래 줄은 표 높이 그대로(min-content) — 5행이든 2행이든 잘리지 않는다. 영상이 남는 높이를 가져간다. */
+.grid.work { grid-template-columns: 848fr 896fr; grid-template-rows: minmax(200px, 1fr) min-content; }
 .grid.work .verdict { grid-column: 2; grid-row: 1 / span 2; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px; min-width: 0; min-height: 0; }
+/* 긴 목록(타임라인·이벤트·제품 표)을 담는 카드 — 카드 밖으로 넘치는 대신 안에서 스크롤한다 */
+.card.fill { display: flex; flex-direction: column; }
+.card.fill > .grow { flex: 1; min-height: 0; overflow: auto; }
 .card h3 { margin: 0 0 12px; font-size: 20px; color: var(--navy); display: flex; align-items: baseline; gap: 12px; }
 .card h3 .note { font-size: 14px; color: var(--muted); font-weight: 400; margin-left: auto; }
 .card h3 .live { color: #E5484D; font-size: 15px; }
@@ -68,9 +76,9 @@ button { font: inherit; cursor: pointer; }
 .video .frame .nocam { position: absolute; left: 12px; bottom: 8px; color: #8A94A6; font-size: 13px; }
 
 /* ── 표 ── */
-table.t { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
+table.t { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
 table.t th { text-align: left; font-size: 14px; color: var(--muted); font-weight: 700; padding: 0 12px; }
-table.t td { background: #FAFBFD; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 10px 12px; font-size: 17px; }
+table.t td { background: #FAFBFD; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 8px 12px; font-size: 17px; }
 table.t td:first-child { border-left: 1px solid var(--line); border-radius: 7px 0 0 7px; font-weight: 700; }
 table.t td:last-child { border-right: 1px solid var(--line); border-radius: 0 7px 7px 0; font-weight: 700; }
 table.t tr.ok td { color: inherit; } table.t tr.ok td.st { color: var(--ok); }
@@ -118,7 +126,7 @@ table.t tr.click { cursor: pointer; }
 .sec .d { color: var(--muted); }
 
 /* ── 진단 ── */
-.grid.diag { grid-template-columns: 848fr 896fr; grid-template-rows: 560fr 372fr; }
+.grid.diag { grid-template-columns: 848fr 896fr; grid-template-rows: minmax(200px, 1fr) min-content; }
 .kv { display: grid; grid-template-columns: 260px 1fr; row-gap: 10px; font-size: 16px; }
 .kv .k { color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
 .kv .v { font-family: ui-monospace, Consolas, monospace; font-weight: 700; }
@@ -131,7 +139,7 @@ table.t tr.click { cursor: pointer; }
 .subtabs button.on { background: var(--navy); color: #fff; border-color: var(--navy); font-weight: 700; }
 
 /* ── 분석 · 진단 시스템 ── */
-.grid.analytics { grid-template-columns: repeat(2, 1fr); grid-template-rows: 136px 1fr 1fr; grid-auto-rows: min-content; }
+.grid.analytics { grid-template-columns: repeat(2, 1fr); grid-template-rows: min-content 1fr 1fr; grid-auto-rows: min-content; }
 .kpis { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
 .tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 22px; }
 .tile .l { color: var(--muted); font-size: 15px; }
@@ -168,4 +176,4 @@ svg.chart text { font-family: inherit; }
 .rcard .use { margin-top: 14px; width: 100%; height: 44px; border-radius: 8px; border: 1px solid var(--blue); background: var(--soft); color: var(--navy); font-weight: 700; }
 .rcard .use.on { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); cursor: default; }
 .empty { color: var(--muted); padding: 24px; text-align: center; }
-@media (max-width: 1400px) { .grid.work, .grid.diag, .grid.history { grid-template-columns: 1fr; grid-template-rows: auto; height: auto; } .grid.work .verdict { grid-row: auto; } .kpis { grid-template-columns: repeat(2, 1fr); } .grid.analytics, .grid.recipe { grid-template-columns: 1fr; } }
+@media (max-width: 1400px) { .grid.work, .grid.diag, .grid.history { grid-template-columns: 1fr; grid-template-rows: auto; min-height: 0; } .grid.work .verdict { grid-row: auto; } .kpis { grid-template-columns: repeat(2, 1fr); } .grid.analytics, .grid.recipe { grid-template-columns: 1fr; } }

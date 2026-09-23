@@ -297,7 +297,7 @@ function viewDiagLive(p) {
     <div class="card"><h3>판정 내부</h3><div class="kv" id="kv-judge">${kvJudge(p, first)}</div>
       <div class="note" style="margin-top:14px">candidate.issues (evaluator.py 정렬 그대로)</div><div id="issues">${issuesHtml(p)}</div></div>
     <div class="card"><h3>프레임 · 파이프라인</h3><div class="kv" id="kv-frame">${kvFrame(p)}</div></div>
-    <div class="card"><h3>상태 변경 이력 <span class="note">이 제품 · 변할 때만 · 최신이 위</span></h3><div id="events">${eventsHtml(p)}</div></div>
+    <div class="card fill"><h3>상태 변경 이력 <span class="note">이 제품 · 변할 때만 · 최신이 위</span></h3><div id="events" class="grow">${eventsHtml(p)}</div></div>
   </div>`;
   setTimeout(bindSubtabs); return html;
 }
@@ -359,13 +359,13 @@ function viewHistory() {
     <td style="color:${r.ng_count ? "var(--ng)" : "var(--muted)"};font-weight:700">${r.ng_count + r.material_ng_count}</td><td style="color:${r.hold_count ? "var(--hold)" : "var(--muted)"};font-weight:700">${r.hold_count}</td>
     <td style="color:${r.first_pass ? "var(--ok)" : "var(--ng)"}">${r.first_pass ? "○" : "✕"}</td><td class="st" style="color:${r.result === "COMPLETED" ? "var(--ok)" : "var(--hold)"}">${r.result === "COMPLETED" ? "완료" : "중단"}</td></tr>`).join("");
   const html = `<div class="grid history">
-    <div class="card"><h3>제품별 기록 <span class="note">UTC 시각 · 클릭하면 오른쪽에 타임라인</span></h3>
+    <div class="card fill"><h3>제품별 기록 <span class="note">UTC 시각 · 클릭하면 오른쪽에 타임라인</span></h3>
       <div class="filters"><select id="f-recipe"><option value="">레시피 전체</option>${["recipe_1", "recipe_2", "recipe_3"].map((r) => `<option ${f.recipe === r ? "selected" : ""}>${r}</option>`).join("")}</select>
         <select id="f-result"><option value="">결과 전체</option><option value="COMPLETED" ${f.result === "COMPLETED" ? "selected" : ""}>완료</option><option value="ABANDONED" ${f.result === "ABANDONED" ? "selected" : ""}>중단</option></select>
         <label><input type="checkbox" id="f-ng" ${f.ng ? "checked" : ""}> NG 있음만</label><label><input type="checkbox" id="f-hold" ${f.hold ? "checked" : ""}> 보류 있음만</label></div>
       ${S.hist.length ? `<table class="t"><tr><th>완료 시각</th><th>제품</th><th>레시피</th><th>사이클</th><th>재료</th><th>조립</th><th>NG</th><th>보류</th><th>첫 시도</th><th>결과</th></tr>${rows}</table>` : '<div class="empty">아직 완료된 제품이 없습니다. 작업 탭에서 [작업 완료] 를 누르면 여기 쌓입니다.</div>'}
       <div class="note">첫 시도 = NG 이벤트 0건으로 완료 · 중단 = 새 작업으로 리셋됨</div></div>
-    <div class="card"><h3>${S.sel != null ? `P-${String(S.sel).padStart(4, "0")} · 타임라인` : "타임라인"} <span class="note">events 그대로</span></h3>${timelineHtml(S.tl || [])}</div>
+    <div class="card fill"><h3>${S.sel != null ? `P-${String(S.sel).padStart(4, "0")} · 타임라인` : "타임라인"} <span class="note">events 그대로</span></h3><div class="grow">${timelineHtml(S.tl || [])}</div></div>
   </div>`;
   setTimeout(() => {
     document.querySelectorAll("tr.click").forEach((tr) => (tr.onclick = () => { S.sel = +tr.dataset.id; loadHistory(); }));
