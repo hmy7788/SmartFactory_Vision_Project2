@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class MVPTests(unittest.TestCase):
     def setUp(self):
         self.config = load_config(ROOT/"config/mvp.json")
+        self.config["registration"] = {"enabled": False}  # original flow; see test_registered_flow.py
         self.recipe = load_recipe(ROOT/"config/recipes/recipe_1.json")
         self.service = InspectionService(self.config, self.recipe)
         self.time = -100
@@ -163,8 +164,9 @@ class MVPTests(unittest.TestCase):
         self.assertAlmostEqual(roi[1][0]-roi[0][0],90*cos(angle))
         self.assertAlmostEqual(roi[1][1]-roi[0][1],90*sin(angle))
         center = tuple(sum(p[k] for p in roi)/4 for k in (0,1))
-        self.assertAlmostEqual(center[0],300+90*sin(angle))
-        self.assertAlmostEqual(center[1],350-90*cos(angle))
+        offset = self.config["part_rois"]["part_2hole"]["offset_ratio"]*500
+        self.assertAlmostEqual(center[0],300+offset*sin(angle))
+        self.assertAlmostEqual(center[1],350-offset*cos(angle))
         self.assertLess(sum(p[1] for p in roi)/4,geo["holes"][3][1])
 
     def test_angle_limit(self):

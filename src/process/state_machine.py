@@ -20,7 +20,8 @@ class StateMachine:
         elif stable:
             self.status, self.confirmed = candidate.status, candidate
             if self.phase == Phase.CHECK_MATERIALS and candidate.status == Status.READY:
-                self.phase = Phase.ASSEMBLING
+                registration = self.config.get("registration", {}).get("enabled", False)
+                self.phase = Phase.REGISTER_MOTHER if registration else Phase.ASSEMBLING
                 # No readiness evidence is carried into assembly PASS evidence.
                 self.filter = TemporalFilter(self.config["stable_duration_ms"], self.config["max_frame_gap_ms"])
                 self.status, self.confirmed = Status.HOLD, None
@@ -28,3 +29,9 @@ class StateMachine:
         # stable=False and the fresh candidate; HOLD is immediate invalidation.
         changed = previous != (self.phase, self.status, self.confirmed)
         return stable, changed
+
+    def begin_assembly(self):
+        """REGISTER_MOTHER -> ASSEMBLING once the Mother lock exists."""
+        self.phase = Phase.ASSEMBLING
+        self.filter = TemporalFilter(self.config["stable_duration_ms"], self.config["max_frame_gap_ms"])
+        self.status, self.confirmed = Status.HOLD, None

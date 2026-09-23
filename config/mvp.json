@@ -7,13 +7,22 @@
   "bolt_half_width_ratio": 0.07,
   "bolt_half_height_ratio": 0.5,
   "part_rois": {
-    "part_2hole": {"width_ratio": 0.18, "length_ratio": 0.50, "offset_ratio": 0.18},
-    "part_3hole": {"width_ratio": 0.18, "length_ratio": 0.80, "offset_ratio": 0.33}
+    "part_2hole": {"width_ratio": 0.18, "length_ratio": 0.48, "offset_ratio": 0.14},
+    "part_3hole": {"width_ratio": 0.18, "length_ratio": 0.70, "offset_ratio": 0.28}
   },
   "part_overlap_threshold": 0.6,
   "part_anchor_tolerance_ratio": 0.1,
   "part_max_angle_deg": 20,
   "stable_duration_ms": 400,
   "material_stable_duration_ms": 1000,
-  "max_frame_gap_ms": 250
+  "max_frame_gap_ms": 250,
+  "registration": {
+    "enabled": true,
+    "register_stable_ms": 1000,
+    "occlusion_hold_ms": 1500,
+    "ambiguous_report_ms": 1000,
+    "hole_min_contrast": 0.45,
+    "move_confirm_ms": 1000,
+    "lost_hold_ms": 3000
+  }
 }

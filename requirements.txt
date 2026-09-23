@@ -1,9 +1,18 @@
-﻿# GPU torch(CUDA 12.6)는 conda env `vision_programming`에 미리 설치되어 있음:
+# SmartFactory Vision - 조립 실시간 검사 (재료 확인 → Mother 등록 → 조립 판정)
+# Python 3.10+ (3.11 권장)
+#
+# GPU torch(CUDA 12.6)는 conda env `vision_programming`에 미리 설치되어 있음. 새 환경이면 먼저:
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-# 아래는 그 외 라이브러리
-ultralytics>=8.4      # YOLO (학습/추론)
-opencv-python>=5.0    # 컨투어/구멍 검출(룰베이스), 웹캠
-numpy>=2.0
-fastapi>=0.141       # 웹 UI 백엔드
+#
+# 코어 판정 로직과 테스트(python -m unittest)는 표준 라이브러리만 사용한다.
+# 아래는 카메라/모델/화면 표시와 팀 공통 라이브러리.
+
+ultralytics>=8.4      # YOLO-OBB 추론·학습
+opencv-python>=4.9    # 웹캠, Mother 구멍 측정, 화면 표시 (4.x / 5.x 모두 동작)
+numpy>=1.26
+Pillow>=10.1          # 화면 한글 표시 (ultralytics 설치 시 함께 설치됨)
+
+# 팀 공통: 웹 UI(web/main.py), 테스트
+fastapi>=0.141
 uvicorn[standard]>=0.53
 pytest

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -12,6 +12,7 @@ class Status(str, Enum):
 
 class Phase(str, Enum):
     CHECK_MATERIALS = "CHECK_MATERIALS"
+    REGISTER_MOTHER = "REGISTER_MOTHER"   # only when config registration.enabled
     ASSEMBLING = "ASSEMBLING"
 
 
@@ -45,3 +46,7 @@ class Snapshot:
     phase: Phase
     evaluated_phase: Phase
     materials: dict
+    # Mother registration: progress 0..1, locked hole points, measured flag.
+    registration: dict = field(default_factory=dict)
+    # Holes whose content is currently remembered because it is hidden (hand, part).
+    occluded: tuple[int, ...] = ()

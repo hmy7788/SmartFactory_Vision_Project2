@@ -29,6 +29,12 @@ def load_config(path):
         for name in ("width_ratio", "length_ratio", "offset_ratio"):
             if not isfinite(roi[name]) or roi[name] <= 0:
                 raise ValueError(f"Invalid Part ROI {name}")
+    registration = config.get("registration", {})
+    if not isinstance(registration, dict) or not isinstance(registration.get("enabled", False), bool):
+        raise ValueError("registration must be an object with boolean 'enabled'")
+    for name, value in registration.items():
+        if name.endswith("_ms") and (not isfinite(value) or value <= 0):
+            raise ValueError(f"registration.{name} must be finite and positive")
     if not isinstance(config.get("calibration_status"), str):
         raise ValueError("calibration_status is required")
     return config

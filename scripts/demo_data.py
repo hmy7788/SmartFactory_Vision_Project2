@@ -24,7 +24,8 @@ def demo_frames(recipe, config):
     extra = OBBDetection("extra_h5", "bolt_1", 0.99, (1000, 700), 80, 80, 0)
     # Spread material detections away from Mother: inventory does not use ROIs.
     ready = [replace(d, center_xy=(150+i*220,150)) for i,d in enumerate(correct)]
-    stages = [([],6), (ready+[extra],12), (ready,12), ([],6),
+    # ([],12): Mother alone and hands off for Mother registration (1 s).
+    stages = [([],6), (ready+[extra],12), (ready,12), ([],12),
               (correct,6), (correct+[extra],6), (correct,6), (None,6), (correct,6)]
     frame_id = 0
     for stage, count in stages:

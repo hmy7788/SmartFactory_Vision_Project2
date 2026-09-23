@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class MaterialWorkflowTests(unittest.TestCase):
     def setUp(self):
         self.config = load_config(ROOT/"config/mvp.json")
+        self.config["registration"] = {"enabled": False}  # original flow; see test_registered_flow.py
         self.recipe = load_recipe(ROOT/"config/recipes/recipe_1.json")
         self.service = InspectionService(self.config,self.recipe)
         self.clock = -100
