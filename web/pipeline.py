@@ -72,7 +72,15 @@ class Pipeline:
         self._fps_window: list[float] = []
 
     # ── 명령 (웹 스레드에서 호출) ──
+    def refresh_recipes(self) -> list[dict]:
+        """config/recipes/*.json 을 다시 읽는다. 서버를 켠 뒤 추가한 레시피도 재시작 없이 쓰기 위해.
+        프레임마다 읽지 않고 레시피 탭을 열 때와 레시피를 고를 때만 부른다 (그때만 바뀔 수 있으니까)."""
+        found = list_recipes(self.recipe_dir)
+        self.recipes = {r["recipe_id"]: r for r in found}
+        return found
+
     def select_recipe(self, recipe_id: str) -> None:
+        self.refresh_recipes()
         if recipe_id not in self.recipes:
             raise KeyError(recipe_id)
         self._commands.put(("recipe", recipe_id))

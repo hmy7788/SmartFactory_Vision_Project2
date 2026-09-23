@@ -158,5 +158,42 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.get("/video").status_code, 404)      # 데모 소스는 영상이 없다
 
 
+@unittest.skipUnless(HAVE_STARLETTE, "starlette not installed")
+class RecipeHotAddTests(unittest.TestCase):
+    """서버를 켠 뒤에 추가한 레시피 파일을 재시작 없이 고를 수 있어야 한다."""
+
+    def setUp(self):
+        import shutil
+        self.tmp = tempfile.TemporaryDirectory()
+        self.rdir = Path(self.tmp.name) / "recipes"
+        shutil.copytree(ROOT / "config/recipes", self.rdir)
+        args = parse(["--db", str(Path(self.tmp.name) / "t.db"), "--recipe-dir", str(self.rdir), "--fps", "60", "--speed", "4"])
+        self.app, self.pipeline, self.store, self.hub = build(args)
+        self.pipeline.start()
+        self.client = TestClient(self.app); self.client.__enter__()
+
+    def tearDown(self):
+        self.client.__exit__(None, None, None); self.tmp.cleanup()
+
+    def test_recipe_file_added_after_start_is_selectable(self):
+        t0 = time.time()
+        while self.client.get("/api/state").json().get("frame_id", 0) < 3 and time.time() - t0 < 15:
+            time.sleep(0.05)
+        self.assertEqual(self.client.post("/api/recipe/recipe_9").status_code, 404)        # 아직 없다
+        (self.rdir / "recipe_9.json").write_text(json.dumps({"recipe_id": "recipe_9", "placements": [
+            {"mother_hole": 2, "bolt": "bolt_1", "part": "part_2hole"}]}), encoding="utf-8")
+        ids = [r["recipe_id"] for r in self.client.get("/api/recipes").json()["recipes"]]
+        self.assertIn("recipe_9", ids)                                                     # 레시피 탭에 보이고
+        self.assertEqual(self.client.post("/api/recipe/recipe_9").status_code, 200)        # 고를 수 있고
+        t0 = time.time()
+        while time.time() - t0 < 15:
+            s = self.client.get("/api/state").json()
+            if s["recipe"]["recipe_id"] == "recipe_9":
+                break
+            time.sleep(0.05)
+        self.assertEqual(s["recipe"]["recipe_id"], "recipe_9")
+        self.assertIn("recipe_9", s["recipes"])                                            # 헤더 드롭다운에도
+
+
 if __name__ == "__main__":
     unittest.main()

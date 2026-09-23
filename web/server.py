@@ -26,7 +26,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from src.app.config import load_config
-from web.pipeline import Pipeline, list_recipes
+from web.pipeline import Pipeline
 from web.source import CameraSource, DemoSource, JsonlSource, demo_config
 from web.store import Store
 
@@ -108,7 +108,8 @@ def create_app(pipeline: Pipeline, store: Store, hub: Hub) -> Starlette:
                                          "phase": "CHECK_MATERIALS"})
 
     async def recipes(request):
-        return JSONResponse({"current": pipeline.recipe.recipe_id, "recipes": list_recipes(pipeline.recipe_dir)})
+        # 레시피 탭이 부른다 — 여기서 파이프라인 목록도 같이 갱신해야 헤더 드롭다운과 어긋나지 않는다
+        return JSONResponse({"current": pipeline.recipe.recipe_id, "recipes": pipeline.refresh_recipes()})
 
     async def select_recipe(request):
         rid = request.path_params["recipe_id"]
@@ -186,7 +187,7 @@ def build(args) -> tuple[Starlette, Pipeline, Store, Hub]:
         factory, model = (lambda recipe, cfg: JsonlSource(args.jsonl)), f"jsonl:{args.jsonl}"
     else:
         factory, model = (lambda recipe, cfg: CameraSource(args.camera, args.weights)), args.weights
-    pipeline = Pipeline(config, ROOT / "config/recipes", store, factory, args.recipe, hub.publish, model_file=model)
+    pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
     return create_app(pipeline, store, hub), pipeline, store, hub
 
 
@@ -195,6 +196,7 @@ def parse(argv=None):
     p.add_argument("--source", choices=["demo", "jsonl", "camera"], default="demo")
     p.add_argument("--recipe", default="recipe_1")
     p.add_argument("--config", default="config/mvp.json")
+    p.add_argument("--recipe-dir", default="config/recipes", help="레시피 JSON 폴더. 서버를 켠 뒤 넣은 파일도 레시피 탭을 열면 잡힌다")
     p.add_argument("--db", default="data/pokayoke.db")
     p.add_argument("--jsonl", default="detections.jsonl")
     p.add_argument("--camera", type=int, default=0)
