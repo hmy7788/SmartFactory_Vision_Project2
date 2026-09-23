@@ -186,8 +186,9 @@ class CameraSource:
     # ── 장치·모델 열기 (지연 로딩: import 비용을 서버 시작이 아니라 첫 프레임에) ──
     def _open_capture(self):
         if self._capture is None:
-            import cv2
-            cap = cv2.VideoCapture(self.index)
+            import cv2, sys
+            backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else cv2.CAP_ANY   # 윈도우: DSHOW 가 빨리·안정적으로 열린다
+            cap = cv2.VideoCapture(self.index, backend)
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_size[0])
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_size[1])
             self._capture = cap
