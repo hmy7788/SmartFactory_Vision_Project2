@@ -16,21 +16,35 @@ def associate(detections, geometry, config):
             matches = [h for h, roi in geometry["bolt_rois"].items() if contains(roi, d.center_xy)]
             scores = {h: 1.0 for h in matches}
         else:
-            scores = {h: overlap(d, rois[d.class_name]) for h, rois in geometry["part_rois"].items()}
-            # Part's lower end must be near the Mother anchor. Overlap alone
-            # cannot distinguish a loose component high above the Mother.
+            # Part's Mother-side end must be near the Mother anchor. Overlap alone
+            # cannot distinguish a loose component far from the Mother. The part
+            # may hang on either Mother-local side, so both sides are evaluated.
             length, _, angle = major_axis(d)
-            direction = (cos(angle), sin(angle))
-            mother_down = geometry["pose"]["v"]
-            if sum(direction[k]*mother_down[k] for k in (0, 1)) < 0:
-                direction = (-direction[0], -direction[1])
             spec = config["part_rois"][d.class_name]
             fraction = spec["offset_ratio"] / spec["length_ratio"]
-            estimated_anchor = tuple(d.center_xy[k] + fraction*length*direction[k] for k in (0, 1))
-            near = [h for h, p in geometry["holes"].items()
-                    if hypot(estimated_anchor[0]-p[0], estimated_anchor[1]-p[1]) <= config["part_anchor_tolerance_ratio"]*width]
-            matches = [h for h in near if scores[h] >= config["part_overlap_threshold"]]
-            if not matches and near:
+            mother_down = geometry["pose"]["v"]
+
+            def evaluate_side(rois_key, mother_end):
+                """mother_end=+1: the end toward Mother-local down touches the Mother (part above)."""
+                side_scores = {h: overlap(d, rois[d.class_name]) for h, rois in geometry[rois_key].items()}
+                direction = (cos(angle), sin(angle))
+                if mother_end*sum(direction[k]*mother_down[k] for k in (0, 1)) < 0:
+                    direction = (-direction[0], -direction[1])
+                anchor = tuple(d.center_xy[k] + fraction*length*direction[k] for k in (0, 1))
+                side_near = [h for h, p in geometry["holes"].items()
+                             if hypot(anchor[0]-p[0], anchor[1]-p[1]) <= config["part_anchor_tolerance_ratio"]*width]
+                side_matches = [h for h in side_near if side_scores[h] >= config["part_overlap_threshold"]]
+                return side_scores, side_near, side_matches
+
+            above = evaluate_side("part_rois", +1)
+            # Opt-in (config "allow_parts_below"): default keeps the original up-only behavior.
+            below = evaluate_side("part_rois_down", -1) if config.get("allow_parts_below") else (None, [], [])
+            if above[2] and below[2]:
+                # Physically impossible for one part; hold rather than guess.
+                ambiguous.append(d.detection_id)
+                continue
+            scores, near, matches = below if below[2] else above
+            if not matches and (above[1] or below[1]):
                 ambiguous.append(d.detection_id)
                 continue
         if len(matches) > 1:

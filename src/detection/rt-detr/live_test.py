@@ -14,35 +14,54 @@ live_test.py
 """
 
 import argparse
+import sys
 import time
+from pathlib import Path
 
 import cv2
 from ultralytics import RTDETR
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # src/detection
+from camera_utils import remove_droidcam_watermark  # noqa: E402
 
 
 def main():
     parser = argparse.ArgumentParser(description="RT-DETR 웹캠 실시간 테스트")
     parser.add_argument("--camera", type=int, default=0, help="cv2.VideoCapture 인덱스")
+    parser.add_argument("--backend", choices=["dshow", "msmf"], default="dshow",
+                         help="카메라 백엔드. DroidCam 가상 웹캠은 msmf로만 잡히는 경우가 있음(실측)")
     parser.add_argument(
         "--weights",
-        default="runs/rtdetr/main_run/weights/last.pt",
+        default="runs/rtdetr/full_run/weights/best.pt",
         help="학습된 RT-DETR 가중치 경로",
     )
     parser.add_argument("--conf", type=float, default=0.25, help="confidence threshold")
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
+    parser.add_argument("--target-fps", type=int, default=30, help="카메라에 요청할 목표 fps")
+    parser.add_argument("--droidcam-watermark", action="store_true",
+                         help="DroidCam 무료 버전 'using droidcam.app' 워터마크 영역을 지우고 추론 (640x480 기준 실측 위치)")
     args = parser.parse_args()
 
     print(f"[LIVE] 모델 로드: {args.weights}", flush=True)
     model = RTDETR(args.weights)
 
-    cap = cv2.VideoCapture(args.camera, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(args.camera, cv2.CAP_MSMF if args.backend == "msmf" else cv2.CAP_DSHOW)
+    # ⚠️ C270은 기본 압축 안 된 YUY2 포맷으로는 1280x720에서 USB 대역폭 한계로 ~10fps로
+    # 묶인다. MJPG(압축) 포맷을 명시적으로 요청해야 720p에서 30fps가 나온다.
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
+    cap.set(cv2.CAP_PROP_FPS, args.target_fps)
 
     if not cap.isOpened():
         print(f"[LIVE] 카메라(index={args.camera})를 열 수 없습니다.", flush=True)
         return
+
+    actual_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+    fourcc_str = "".join(chr((actual_fourcc >> 8 * i) & 0xFF) for i in range(4))
+    print(f"[LIVE] 카메라 설정: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))} "
+          f"@ {cap.get(cv2.CAP_PROP_FPS):.0f}fps (FOURCC={fourcc_str})", flush=True)
 
     print("[LIVE] 시작 — 'q'를 누르면 종료합니다.", flush=True)
 
@@ -52,6 +71,9 @@ def main():
         if not ret:
             print("[LIVE] 프레임을 읽지 못했습니다.", flush=True)
             break
+
+        if args.droidcam_watermark:
+            frame = remove_droidcam_watermark(frame)
 
         results = model.predict(frame, conf=args.conf, verbose=False)
         annotated = results[0].plot().copy()  # plot()은 읽기 전용 배열을 반환 — putText 전에 복사 필요
