@@ -60,7 +60,7 @@ echo === OBB label folder not found. Put the Drive folder (labels-...) next to t
 echo     run_train_obb.cmd C:\path\to\labels C:\path\to\images 100
 goto :end
 :notorch
-echo === torch is missing. Install the CUDA build first:  https://pytorch.org/get-started/locally/
+echo === torch is missing. Double-click install_torch_gpu.cmd first (installs the GPU build + ultralytics).
 echo     (e.g.  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126 )
 goto :end
 :fail
