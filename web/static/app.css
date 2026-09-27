@@ -103,9 +103,11 @@ table.t tr.click { cursor: pointer; }
 .verdict.HOLD { background: var(--hold-bg); border-color: var(--hold); color: var(--hold); }
 .verdict.IN_PROGRESS, .verdict.READY { background: var(--wait-bg); border-color: var(--wait); color: var(--wait); }
 .verdict .stable { position: absolute; right: 24px; top: 20px; }
-/* HOLD 유예: 마지막 확정 판정을 흐리게 유지 — 손이 지나가는 1~2초 동안 카드가 통째로 바뀌지 않는다 */
-.verdict.dim > :not(.stable) { opacity: 0.45; transition: opacity 0.3s; }
-.verdict.dim .bigbtn { pointer-events: none; }     /* 보류 중엔 [작업 완료] 가 409 를 받으므로 눌리지 않게 */
+/* HOLD 유예: 손이 지나가는 1.5초 동안 카드는 그대로 두고 오른쪽 위 '확인 중' 칩만 붙인다 (카드 전체를 흐리면 그것도 깜빡임이다) */
+.verdict.dim .bigbtn { opacity: 0.45; pointer-events: none; }     /* 보류 중엔 [작업 완료] 가 409 를 받으므로 눌리지 않게 */
+/* 1.5초 넘는 보류: 자리 표는 마지막 확인 상태를 흐리게 유지 (다섯 줄을 '보류' 로 바꾸지 않는다) */
+.card.dim table.t { opacity: 0.45; transition: opacity 0.3s; }
+#sidebar .ver { color: #5F74A8; font-size: 11px; margin-bottom: 10px; text-align: center; }
 .verdict.dim .stable .chip { color: var(--hold); background: var(--hold-bg); font-weight: 700; }
 .verdict.READY { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
 /* 확정까지 남은 시간 막대 (재료 READY 1초 · 조립 후보 0.4초). 코어가 세는 시간을 보여 줄 뿐, 화면이 판정하지 않는다 */

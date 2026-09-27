@@ -52,8 +52,9 @@ function human(i) {
 //   HOLD_GRACE_MS  보류(HOLD): 이 시간까지는 마지막 확정 판정을 흐리게 유지하고 '확인 중' 만 붙인다 (손이 지나가는 정도는 화면이 안 바뀐다)
 //   CHIP_DELAY_MS  '확인 중' 칩: 후보가 확정과 달라진 채 이 시간이 지나야 붙는다 (코어 안정화 400ms 안에 끝나는 변화엔 안 보인다)
 const UI = { MAT_WINDOW_MS: 700, HOLD_GRACE_MS: 1500, CHIP_DELAY_MS: 600 };
+const UI_VERSION = "화면 0927b";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
 const S = { view: "work", p: null, prev: null, rings: null, obs: null, geom: null, shown: null, matHist: [], matView: null, holdSince: null, holdMode: null,
-            unstableSince: null, chip: false, candKey: null, candSince: null, workKey: null,
+            unstableSince: null, chip: false, candKey: null, candSince: null, keys: {},
             sub: "live", period: 7, events: [], hist: null, sel: null, ana: null, diag: null, recipes: null };
 const $ = (sel, el = document) => el.querySelector(sel);
 const main = $("#main"), hmid = $("#header-mid"), hright = $("#header-right");
@@ -108,12 +109,15 @@ function deriveView(p) {
   const unstable = !mat && !holdNow && !p.stable;
   if (unstable) { if (S.unstableSince == null) S.unstableSince = t; } else S.unstableSince = null;
   S.chip = unstable && t - S.unstableSince >= UI.CHIP_DELAY_MS;
-  // 6. 자리 상태(링·표) — 확정에서만 갱신. HOLD 유예 중엔 그대로, 유예가 지나면 보류색. 확정이 아직 없을 때(단계 시작·HOLD 직후)만 후보로 임시.
-  if (mat) { S.rings = ringsOf(p, null, "none"); S.obs = null; }
-  else if (p.evaluated_phase !== p.phase) { S.rings = null; S.obs = null; }   // 재료→조립 전환 프레임: 후보가 아직 READY (재료 판정) 라 자리 상태가 없다
-  else if (S.holdMode === "hold") S.rings = ringsOf(p, null, "hold");
-  else if (S.holdMode === "grace") { /* 유지 */ }
-  else if (p.confirmed || !S.rings || S.rings[1] === "hold" || S.rings[1] === "none") { S.rings = ringsOf(p, p.confirmed || cand); S.obs = obsNames(p); }
+  // 6. 자리 상태(링·표) — 확정(confirmed) 에서만 만든다. 확정 전(조립 시작 직후)은 null = '전부 아직'.
+  //    '지금' 칸의 이름은 코어가 stable 이라고 한 프레임에서만 찍는다: confirmed 는 매 프레임 같은 값이 실려 오지만
+  //    observed 는 매 프레임 원시 검출이라, 그대로 쓰면 '지금' 칸이 프레임마다 깜빡인다 (09-27a 의 버그).
+  //    HOLD 중엔 유예든 보류든 마지막 상태를 그대로 둔다 — 다섯 줄이 한꺼번에 '보류' 로 바뀌지 않고, 표만 흐려진다.
+  if (mat || p.evaluated_phase !== p.phase) { S.rings = null; S.obs = null; }   // 재료 단계 · 재료→조립 전환 프레임
+  else if (!holdNow) {
+    if (p.confirmed) S.rings = ringsOf(p, p.confirmed);
+    if (p.stable) S.obs = obsNames(p);
+  }
   // 7. 오버레이 기하 — HOLD 유예 중엔 마지막 기하를 그대로 그린다 (손이 지나갈 때 링이 사라졌다 나타나지 않게)
   if (p.geometry?.pose) S.geom = p.geometry; else if (S.holdMode !== "grace") S.geom = null;
 }
@@ -152,10 +156,18 @@ function progressPct(p) {   // 지금 후보가 확정되기까지 (READY: 재�
   const need = p.phase === "CHECK_MATERIALS" ? p.timing.material_stable_ms : p.timing.stable_ms;
   return p.candidate.status === "HOLD" || p.stable ? 0 : Math.max(0, Math.min(100, (100 * (p.ts_ms - S.candSince)) / Math.max(1, need)));
 }
-function workKey(p) {   // 이 값이 바뀔 때만 작업 화면 DOM 을 다시 그린다 (막대·각도 숫자는 updateLive 가 제자리에서 갱신)
-  const cand = p.candidate, mat = p.phase === "CHECK_MATERIALS", d = mat ? matDiff(p) : null;
-  return JSON.stringify([p.phase, p.product_id, p.recipe?.recipe_id, p.recipes, p.has_video, p.video_at_end, S.holdMode, S.holdMode === "hold" && holdCode(p),
-    S.chip, S.shown && [S.shown.status, S.shown.issues], S.rings, S.obs, d && [d.remove, d.add, d.o], !S.shown && cand.status]);
+// 작업 화면은 네 조각을 따로 그린다. 각 조각은 자기 키가 바뀔 때만 다시 그린다 (막대·각도 숫자는 updateLive 가 제자리에서).
+// 영상 카드는 영상 유무·해상도가 바뀔 때만 — 전체를 다시 그리면 <img src=/video> 가 새로 열려 영상이 깜빡인다.
+function workKeys(p) {
+  const mat = p.phase === "CHECK_MATERIALS", d = mat ? matDiff(p) : null, holdLong = S.holdMode === "hold";
+  return {
+    frame: JSON.stringify([p.has_video, p.frame_size]),
+    header: JSON.stringify([p.phase, p.recipe?.recipe_id, p.recipes]),
+    note: JSON.stringify([p.video_at_end]),
+    table: JSON.stringify([p.phase, p.recipe?.recipe_id, mat ? [d.e, d.o] : [S.rings, S.obs, holdLong]]),
+    verdict: JSON.stringify([p.phase, p.recipe?.recipe_id, p.video_at_end, S.holdMode, holdLong && holdCode(p), S.chip,
+      S.shown && [S.shown.status, S.shown.issues], S.rings, d && [d.remove, d.add, d.o]]),
+  };
 }
 
 // ── 라우팅 ──────────────────────────────────────────────────
@@ -163,7 +175,7 @@ window.addEventListener("hashchange", route);
 function route() {
   S.view = (location.hash || "#work").slice(1);
   document.querySelectorAll("#sidebar a").forEach((a) => a.classList.toggle("on", a.dataset.view === S.view));
-  S.workKey = null;
+  S.keys = {};
   render(false);
   if (S.view === "history") loadHistory();
   if (S.view === "analytics") loadAnalytics();
@@ -174,7 +186,7 @@ function route() {
 function render(shapeSame) {
   const p = S.p;
   switch (S.view) {
-    case "work": { const key = p ? workKey(p) : "none"; if (key !== S.workKey) { S.workKey = key; renderHeaderWork(p); main.innerHTML = viewWork(p); } if (p) { updateLive(p); drawOverlay(p, false); } break; }
+    case "work": renderWork(p); break;
     case "diag": if (!shapeSame) renderHeaderPeriod(); if (S.sub === "live") { if (!shapeSame) main.innerHTML = viewDiagLive(p); else updateDiagLive(p); drawOverlay(p, true); } else if (!shapeSame && S.diag) main.innerHTML = viewDiagSystem(S.diag); break;
     case "history": renderHeaderPeriod(); if (!shapeSame) main.innerHTML = viewHistory(); break;
     case "analytics": renderHeaderPeriod(); if (!shapeSame) main.innerHTML = viewAnalytics(); break;
@@ -206,19 +218,33 @@ function renderHeaderPeriod() {
 function renderHeaderPlain(title, sub) { hmid.innerHTML = `<div class="title" style="font-size:22px">${title}</div><span style="color:#8FA3CE">${sub}</span>`; hright.innerHTML = ""; }
 
 // ── 작업 탭 ─────────────────────────────────────────────────
-function viewWork(p) {
-  if (!p) return `<div class="empty">서버에 연결하는 중…</div>`;
-  const mat = p.phase === "CHECK_MATERIALS";
+function viewWork(p) {   // 뼈대만. 표·판정 카드는 renderWork 가 바로 채운다
   return `<div class="grid work">
     ${videoCard(p, false)}
-    <div class="card">${mat ? tableMaterials(p) : tableHoles(p)}</div>
-    ${verdictCard(p)}
+    <div class="card" id="table-card"></div>
+    <div class="card verdict IN_PROGRESS" id="verdict"></div>
   </div>`;
 }
+function renderWork(p) {
+  if (!p) { S.keys = {}; main.innerHTML = `<div class="empty">서버에 연결하는 중…</div>`; return; }
+  const k = workKeys(p);
+  if (k.frame !== S.keys.frame || !$("#table-card")) { S.keys = { frame: k.frame }; main.innerHTML = viewWork(p); }
+  const K = S.keys;
+  if (k.header !== K.header) { K.header = k.header; renderHeaderWork(p); }
+  if (k.note !== K.note) { K.note = k.note; const n = $("#video-note"); if (n) n.innerHTML = videoNote(p); }
+  if (k.table !== K.table) {
+    K.table = k.table; const t = $("#table-card"), mat = p.phase === "CHECK_MATERIALS";
+    t.className = "card" + (!mat && S.holdMode === "hold" ? " dim" : "");
+    t.innerHTML = mat ? tableMaterials(p) : tableHoles(p);
+  }
+  if (k.verdict !== K.verdict) { K.verdict = k.verdict; const v = $("#verdict"); if (v) v.outerHTML = verdictCard(p); }
+  updateLive(p); drawOverlay(p, false);
+}
+function videoNote(p) { return `${p.video_at_end ? chip("muted", "영상 끝 · 마지막 장면 유지 중") : ""}H1 은 화면 왼쪽 · 파트는 위·아래 어느 쪽이든`; }
 function videoCard(p, diag) {
   const [w, h] = p.frame_size || [1280, 720];
   const right = diag ? `<span class="note">${p.calibration_status === "UNVALIDATED_DEFAULTS" ? chip("hold", "ROI 미보정") : ""}${chip("wait", "오버레이 상세")}</span>`
-                     : `<span class="note">${p.video_at_end ? chip("muted", "영상 끝 · 마지막 장면 유지 중") : ""}H1 은 화면 왼쪽 · 파트는 위·아래 어느 쪽이든</span>`;
+                     : `<span class="note" id="video-note">${videoNote(p)}</span>`;
   return `<div class="card video"><h3>실시간 영상 <span class="live">LIVE</span>${right}</h3>
     <div class="frame">${p.has_video ? `<img src="/video" alt="">` : `<span class="nocam">카메라 없음 — ${esc(p.recipe?.recipe_id || "")} 데모 소스, 오버레이만 표시</span>`}
     <canvas id="overlay" width="${w}" height="${h}"></canvas></div></div>`;
@@ -236,7 +262,7 @@ function tableMaterials(p) {
 }
 function tableHoles(p) {
   const exp = {}; (p.recipe.placements || []).forEach((pl) => (exp[pl.mother_hole] = pl));
-  const rings = S.rings || emptyRings(p), obs = S.obs || {};
+  const rings = S.rings || emptyRings(p), obs = S.obs || {}, holdLong = S.holdMode === "hold";
   const LAB = { ok: "맞음", ng: "틀림", wait: "아직", skip: "비움", hold: "보류", none: "" };
   const rows = [1, 2, 3, 4, 5].map((h) => {
     const st = rings[h], ex = exp[h], ob = obs[h] || {};
@@ -244,7 +270,7 @@ function tableHoles(p) {
     return `<tr class="${st}"><td>H${h}</td><td>${ex ? bolt(ex.bolt) + part(ex.part) : '<span style="color:var(--muted)">비워 둠</span>'}</td>
       <td class="now">${seen || "—"}</td><td class="st">${LAB[st] || ""}</td></tr>`;
   }).join("");
-  return `<h3>자리별 현황 <span class="note">순서는 상관없습니다 · 확정된 것만 표시</span></h3>
+  return `<h3>자리별 현황 <span class="note">${holdLong ? "보류 중 — 마지막으로 확인된 상태" : "순서는 상관없습니다 · 확정된 것만 표시"}</span></h3>
     <table class="t"><tr><th>자리</th><th>꽂을 것</th><th>지금</th><th>상태</th></tr>${rows}</table>`;
 }
 
@@ -278,7 +304,7 @@ function verdictCard(p) {
       hint = "왼쪽 표의 다섯 줄이 전부 ✓ 가 되면 자동으로 넘어갑니다. 누를 것 없습니다.";
     }
   } else {
-    const st = shown ? shown.status : (cand.status === "IN_PROGRESS" || cand.status === "READY" ? "IN_PROGRESS" : "CHECKING");   // READY = 전환 프레임
+    const st = shown ? shown.status : "IN_PROGRESS";   // 조립 단계에서 아직 확정이 없으면(시작 직후) 후보와 무관하게 '조립 중'
     if (st === "PASS") {
       cls = "PASS"; big = "PASS"; sub = `${p.recipe.recipe_id}  전부 맞음`;
       body = `<button class="bigbtn" id="btn-complete">작업 완료</button>`;
@@ -296,9 +322,6 @@ function verdictCard(p) {
         if (rest.length) body += `<div class="label">그다음 · 외 ${rest.length}건</div>` + rest.map((i) => { const [a, b] = human(i); return `<div class="sec"><span class="t">${esc(a)}</span><span class="d">${esc(b)}</span></div>`; }).join("");
       } else sub = "확인 중";
       hint = "고치면 자동으로 다시 확인합니다. 누를 것 없습니다.";
-    } else if (st === "CHECKING") {      // 아직 확정이 없는데 후보가 PASS/NG — 확정될 때까지 큰 글씨를 미리 바꾸지 않는다
-      cls = "IN_PROGRESS"; big = "확인 중"; sub = "손을 떼고 잠시 기다리세요";
-      body = progressBar("판정까지", p);
     } else {  // IN_PROGRESS
       cls = "IN_PROGRESS"; big = "조립 중";
       const exp = p.recipe.placements || [], rings = S.rings || emptyRings(p);
@@ -309,7 +332,7 @@ function verdictCard(p) {
     }
   }
   setTimeout(() => { const b = $("#btn-complete"); if (b) b.onclick = async () => { b.disabled = true; const r = await post("/api/complete"); if (!r.ok) { alert(r.reason); b.disabled = false; } }; });
-  return `<div class="card verdict ${cls}${dim ? " dim" : ""}">${stableChip}<div class="big ${big.length > 4 ? "long" : ""}">${esc(big)}</div><div class="sub">${esc(sub)}</div><div class="body">${body}</div>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
+  return `<div class="card verdict ${cls}${dim ? " dim" : ""}" id="verdict">${stableChip}<div class="big ${big.length > 4 ? "long" : ""}">${esc(big)}</div><div class="sub">${esc(sub)}</div><div class="body">${body}</div>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
 }
 function progressBar(label, p) { return `<div class="prog"><div class="cap">${esc(label)}</div><div class="bar"><i id="prog" style="width:${progressPct(p).toFixed(0)}%"></i></div></div>`; }
 function updateLive(p) {   // DOM 을 다시 그리지 않고 제자리에서 바뀌는 것: 진행 막대 · 보류 각도 숫자
@@ -589,7 +612,8 @@ function rangeChart(conf, thr) {
 // ── 시계 · 시작 ─────────────────────────────────────────────
 setInterval(() => ($("#clock").textContent = new Date().toTimeString().slice(0, 5)), 1000);
 setInterval(() => { if (S.view === "history") loadHistory(); if (S.view === "analytics") loadAnalytics(); if (S.view === "diag" && S.sub === "system") loadDiag(); }, 5000);
+{ const ve = $("#ver"); if (ve) ve.textContent = UI_VERSION; }
 route(); connect();
 // 테스트 훅 (tests/test_web_ui.js 가 node 에서 payload 순서를 넣어 파생 상태·카드 내용을 검사한다). 브라우저에선 쓰지 않는다.
-window.__pokayoke = { S, UI, onPayload, deriveView, workKey, verdictCard, tableMaterials, tableHoles, ringsOf, modeCounts, progressPct };
+window.__pokayoke = { S, UI, UI_VERSION, onPayload, deriveView, workKeys, verdictCard, tableMaterials, tableHoles, ringsOf, modeCounts, progressPct };
 })();

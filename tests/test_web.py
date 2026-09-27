@@ -317,8 +317,12 @@ class ServerTests(unittest.TestCase):
         with self.client.websocket_connect("/ws") as ws:
             msg = json.loads(ws.receive_text())
             self.assertEqual(msg["type"], "snapshot")
-        self.assertEqual(self.client.get("/").status_code, 200)
-        self.assertEqual(self.client.get("/static/app.js").status_code, 200)
+        index = self.client.get("/")
+        self.assertEqual(index.status_code, 200)
+        self.assertEqual(index.headers.get("cache-control"), "no-cache")         # 옛 화면이 캐시로 뜨지 않게
+        js = self.client.get("/static/app.js")
+        self.assertEqual(js.status_code, 200)
+        self.assertEqual(js.headers.get("cache-control"), "no-cache")
         self.assertEqual(self.client.get("/video").status_code, 404)      # 데모 소스는 영상이 없다
 
 

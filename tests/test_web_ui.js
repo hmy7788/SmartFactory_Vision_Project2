@@ -5,19 +5,20 @@
 const fs = require("fs"), path = require("path"), vm = require("vm");
 
 // ── 최소 DOM 흉내 ──
-let renders = 0;                                    // main.innerHTML 이 바뀐 횟수 = 큰 DOM 을 다시 그린 횟수
-function el() {
-  const e = { _html: "", classList: { add() {}, remove() {}, toggle() {} }, style: {}, textContent: "", title: "", dataset: {},
+// 조각마다 다시 그린 횟수를 센다: main(뼈대 — 영상 <img> 가 새로 열림) · table(자리/재료 표) · verdict(판정 카드)
+const renders = { main: 0, table: 0, verdict: 0 };
+function el(name) {
+  const e = { _html: "", className: "", classList: { add() {}, remove() {}, toggle() {} }, style: {}, textContent: "", title: "", dataset: {},
               querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, getContext: () => null };
-  Object.defineProperty(e, "innerHTML", { get: () => e._html, set: (v) => { e._html = v; if (e === main) renders++; } });
+  const set = (v) => { e._html = v; if (name) renders[name]++; };
+  Object.defineProperty(e, "innerHTML", { get: () => e._html, set });
+  Object.defineProperty(e, "outerHTML", { get: () => e._html, set });
   return e;
 }
-const main = el(), hmid = el(), hright = el(), misc = el();
+const main = el("main"), table = el("table"), verdict = el("verdict"), note = el(), hmid = el(), hright = el(), misc = el();
 const NULL_IDS = new Set(["#overlay", "#prog", "#hold-t", "#btn-complete"]);
-const document = {
-  querySelector: (s) => (s === "#main" ? main : s === "#header-mid" ? hmid : s === "#header-right" ? hright : NULL_IDS.has(s) ? null : misc),
-  querySelectorAll: () => [],
-};
+const IDS = { "#main": main, "#header-mid": hmid, "#header-right": hright, "#table-card": table, "#verdict": verdict, "#video-note": note };
+const document = { querySelector: (s) => IDS[s] || (NULL_IDS.has(s) ? null : misc), querySelectorAll: () => [] };
 const window = { addEventListener() {} };
 const sandbox = { window, document, location: { hash: "#work", protocol: "http:", host: "x" }, WebSocket: class { constructor() {} },
                   setInterval: () => 0, clearInterval() {}, setTimeout: (f) => { try { f(); } catch (_) {} return 0; }, fetch: () => Promise.reject(new Error("no server")),
@@ -44,10 +45,11 @@ function pay(o) {
   }, o.extra || {});
 }
 const feed = (o) => { const p = pay(o); PK.onPayload(p); return p; };
-const html = () => main.innerHTML, text = () => html().replace(/<[^>]+>/g, " ");
+const html = () => [main._html, note._html, table._html, verdict._html].join("\n"), text = () => html().replace(/<[^>]+>/g, " ");
+const nRenders = () => renders.table + renders.verdict + renders.main;
 let failed = 0, passed = 0;
 function check(name, cond, detail = "") { if (cond) passed++; else { failed++; console.log(`FAIL  ${name}  ${detail}`); } }
-function scenario(name, fn) { ts += 5000; product++; renders = 0; const f0 = failed; fn(); console.log(`  ${name}: ${failed === f0 ? "ok" : "FAILED"}`); }
+function scenario(name, fn) { ts += 5000; product++; renders.main = renders.table = renders.verdict = 0; const f0 = failed; fn(); console.log(`  ${name}: ${failed === f0 ? "ok" : "FAILED"}`); }
 const MISSING = (h, part, bolt) => [{ code: "MISSING_BOLT", hole_id: h, expected: bolt, observed: "" }, { code: "MISSING_PART", hole_id: h, expected: part, observed: "" }];
 const IN_PROGRESS = { status: "IN_PROGRESS", issues: [...MISSING(1, "part_2hole", "bolt_1"), ...MISSING(3, "part_3hole", "bolt_2")] };
 const NG = { status: "NG", issues: [{ code: "WRONG_BOLT", hole_id: 1, expected: "bolt_1", observed: "bolt_2" }, ...MISSING(3, "part_3hole", "bolt_2")] };
@@ -61,7 +63,7 @@ scenario("materials counts are smoothed", () => {
                                      candidate: { status: "IN_PROGRESS", issues: [] } });
   check("matView is the majority", S.matView.bolt_1 === 1 && S.matView.part_2hole === 1, JSON.stringify(S.matView));
   check("card names the missing part from the smoothed counts", text().includes("3구 파트 1개 더 놓으세요"), text().slice(0, 300));
-  check("few re-renders despite flicker", renders <= 3, `renders=${renders}`);
+  check("few re-renders despite flicker", renders.table + renders.verdict <= 4 && renders.main <= 1, JSON.stringify(renders));
   check("no chip in materials phase", !html().includes("확인 중"));
 });
 
@@ -79,11 +81,11 @@ scenario("ready shows a progress bar toward the material gate", () => {
 scenario("assembly card follows confirmed, not the flickering candidate", () => {
   for (let i = 0; i < 12; i++) feed({ candidate: IN_PROGRESS, confirmed: IN_PROGRESS, stable: true });
   check("shows 조립 중", text().includes("조립 중") && text().includes("2자리 남음"), text().slice(0, 200));
-  const before = renders;
+  const before = nRenders();
   for (let i = 0; i < 10; i++) feed({ candidate: i % 2 ? NG : IN_PROGRESS, confirmed: IN_PROGRESS, stable: false });   // 400ms 흔들림
   check("still 조립 중, no NG text", text().includes("조립 중") && !text().includes("볼트가 다릅니다"), text().slice(0, 200));
   check("no chip before CHIP_DELAY", !html().includes("확인 중"));
-  check("no re-render during flicker", renders === before, `renders=${renders - before}`);
+  check("no re-render during flicker", nRenders() === before, `renders=${nRenders() - before}`);
   for (let i = 0; i < 8; i++) feed({ candidate: i % 2 ? NG : IN_PROGRESS, confirmed: IN_PROGRESS, stable: false });    // 누적 720ms
   check("chip after CHIP_DELAY", html().includes("확인 중"));
   for (let i = 0; i < 3; i++) feed({ candidate: NG, confirmed: NG, stable: true });
@@ -95,20 +97,24 @@ scenario("assembly card follows confirmed, not the flickering candidate", () => 
 // 4. HOLD 유예: 손이 지나가는 1초는 마지막 확정을 흐리게 유지, 1.5초를 넘기면 보류 화면, 끝나면 복귀
 scenario("hold grace keeps the last verdict", () => {
   for (let i = 0; i < 12; i++) feed({ candidate: NG, confirmed: NG, stable: true });
-  const before = renders;
+  const tBefore = renders.table, vBefore = renders.verdict;
   for (let i = 0; i < 25; i++) feed({ candidate: HOLD, confirmed: null, stable: false, extra: { status: "HOLD" } });   // 1000ms HOLD
-  check("grace: still NG, dimmed, chip", S.holdMode === "grace" && html().includes("verdict NG dim") && html().includes("확인 중"), html().slice(0, 200));
+  check("grace: still NG, chip, button-only dim", S.holdMode === "grace" && html().includes("verdict NG dim") && html().includes("확인 중"), html().slice(0, 200));
   check("grace: rings kept", S.rings[1] === "ng", JSON.stringify(S.rings));
   check("grace: geometry kept for overlay", S.geom && S.geom.pose);
-  check("one re-render for the dim state", renders - before === 1, `renders=${renders - before}`);
+  check("grace: table untouched, verdict once", renders.table === tBefore && renders.verdict - vBefore === 1, JSON.stringify(renders));
   for (let i = 0; i < 15; i++) feed({ candidate: HOLD, confirmed: null, stable: false, extra: { status: "HOLD" } });   // 누적 1600ms
   check("hold: 잠깐 + reason", S.holdMode === "hold" && text().includes("잠깐") && text().includes("Mother 안 보임"), text().slice(0, 200));
-  check("hold: rings amber", S.rings[1] === "hold");
+  check("hold: rings kept (not five 보류 rows), table dimmed", S.rings[1] === "ng" && table.className.includes("dim") && text().includes("마지막으로 확인된 상태"), table.className);
+  check("no main re-render (video stays)", renders.main === 0, JSON.stringify(renders));
   feed({ candidate: NG, confirmed: null, stable: false, extra: { status: "HOLD" } });   // HOLD 끝, 확정은 아직 없음
   check("after hold: last verdict shown again (not dim)", text().includes("NG") && !html().includes(" dim"), html().slice(0, 200));
   for (let i = 0; i < 11; i++) feed({ candidate: NG, confirmed: NG, stable: true });
   check("re-confirmed NG", S.holdMode === null && text().includes("H1 볼트가 다릅니다"));
 });
+
+// 0. 버전 표시가 있다 (브라우저 캐시 확인용)
+check("UI version string", /0927/.test(PK.UI_VERSION), PK.UI_VERSION);
 
 // 5. PASS 후보는 확정 전엔 큰 글씨를 바꾸지 않고, 확정되면 [작업 완료]. 영상 끝 안내.
 scenario("pass appears only when confirmed; video end note", () => {
@@ -129,7 +135,7 @@ scenario("phase and product changes drop the old verdict", () => {
   feed({ candidate: { status: "IN_PROGRESS", issues: [] }, confirmed: null, stable: false, observed: { mother_part: 1 }, extra: { status: "HOLD", phase: "CHECK_MATERIALS", evaluated_phase: "CHECK_MATERIALS" } });
   check("new product: shown cleared, materials card", S.shown === null && text().includes("재료 준비"), text().slice(0, 200));
   feed({ candidate: PASS, confirmed: null, stable: false, extra: { status: "HOLD" } });   // 조립 단계 시작, 후보가 바로 PASS (있을 수 없지만 방어)
-  check("unconfirmed PASS → 확인 중, not PASS", text().includes("확인 중") && !/\bPASS\b/.test(text()), text().slice(0, 200));
+  check("unconfirmed PASS → 조립 중, not PASS", text().includes("조립 중") && !/\bPASS\b/.test(text()), text().slice(0, 200));
 });
 
 // 7. 재료→조립 전환 프레임 (phase 는 ASSEMBLING, 후보는 아직 재료 판정 READY): 자리 상태를 만들지 않고 '조립 중' 전부 남음
@@ -139,7 +145,22 @@ scenario("materials→assembly transition frame", () => {
   feed({ candidate: { status: "READY", issues: [] }, confirmed: null, stable: true, observed: good, extra: { status: "HOLD", phase: "ASSEMBLING", evaluated_phase: "CHECK_MATERIALS" }, geometry: {} });
   check("transition: no rings, 조립 중 with every hole remaining", S.rings === null && text().includes("조립 중") && text().includes("2자리 남음") && !text().includes("확인 중"), text().slice(0, 200));
   feed({ candidate: IN_PROGRESS, confirmed: null, stable: false, extra: { status: "HOLD" } });
-  check("first assembly candidate fills the rings", S.rings && S.rings[1] === "wait" && S.rings[2] === "skip", JSON.stringify(S.rings));
+  check("unconfirmed candidate does not fill the rings", S.rings === null, JSON.stringify(S.rings));
+  feed({ candidate: IN_PROGRESS, confirmed: IN_PROGRESS, stable: true });
+  check("confirmation fills the rings", S.rings && S.rings[1] === "wait" && S.rings[2] === "skip", JSON.stringify(S.rings));
+});
+
+// 8. 확정은 그대로인데 자리별 검출(observed) 이 프레임마다 흔들린다 — 자리 표('지금' 칸 포함) 는 다시 그려지지 않는다 (0927a 버그)
+scenario("hole table ignores per-frame observed jitter", () => {
+  const H1 = { "1": { bolt: [{ class_name: "bolt_1" }], part: [{ class_name: "part_2hole" }] } };
+  const ONE_DONE = { status: "IN_PROGRESS", issues: MISSING(3, "part_3hole", "bolt_2") };
+  for (let i = 0; i < 12; i++) feed({ candidate: ONE_DONE, confirmed: ONE_DONE, stable: true, extra: { observed: H1 } });
+  check("지금 column from the stable frame", text().includes("노란 볼트 + 2구 파트") && S.rings[1] === "ok", text().slice(0, 300));
+  const before = renders.table;
+  const jitter = [{}, { "1": { bolt: [{ class_name: "bolt_2" }], part: [] } }, H1, { "1": { bolt: [], part: [{ class_name: "part_2hole" }] }, "2": { bolt: [{ class_name: "bolt_1" }], part: [] } }];
+  for (let i = 0; i < 40; i++) feed({ candidate: i % 3 ? ONE_DONE : IN_PROGRESS, confirmed: ONE_DONE, stable: false, extra: { observed: jitter[i % 4] } });
+  check("table not re-rendered while confirmed is unchanged", renders.table === before, `table renders=${renders.table - before}`);
+  check("지금 column unchanged", text().includes("노란 볼트 + 2구 파트"));
 });
 
 console.log(`\n${passed} checks passed, ${failed} failed`);

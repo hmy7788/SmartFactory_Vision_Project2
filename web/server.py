@@ -35,6 +35,16 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = Path(__file__).with_name("static")
 
 
+class NoCacheStatic(StaticFiles):
+    """화면 파일(app.js·css) 을 브라우저가 캐시로 계속 쓰지 않게 — 매번 서버에 확인(ETag, 안 바뀌었으면 304).
+    이게 없으면 파일을 바꿔도 F5 로는 옛 화면이 뜬다 (Chrome 은 하위 리소스를 일반 새로고침 때 재검증하지 않는다)."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 class Hub:
     """파이프라인 스레드 → 접속한 브라우저 전부. 마지막 payload 는 새 접속과 /api/state 에 바로 준다."""
 
@@ -74,7 +84,7 @@ def create_app(pipeline: Pipeline, store: Store, hub: Hub) -> Starlette:
         return cast(raw)
 
     async def index(request):
-        return FileResponse(STATIC / "index.html")
+        return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
     async def ws_endpoint(ws: WebSocket):
         await ws.accept()
@@ -173,7 +183,7 @@ def create_app(pipeline: Pipeline, store: Store, hub: Hub) -> Starlette:
         Route("/api/timeline/{product_id:int}", timeline),
         Route("/api/analytics", analytics),
         Route("/api/diagnostics", diagnostics),
-        Mount("/static", StaticFiles(directory=str(STATIC)), name="static"),
+        Mount("/static", NoCacheStatic(directory=str(STATIC)), name="static"),
     ])
 
 
