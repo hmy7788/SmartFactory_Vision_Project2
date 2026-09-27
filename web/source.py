@@ -251,8 +251,15 @@ class CameraSource:
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_size[0])
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_size[1])
                 cap.set(cv2.CAP_PROP_FPS, 30)
+                if not cap.isOpened():                   # 웹캠 없음 — 0.5초마다 다시 열기를 시도하므로 안내는 처음 한 번만
+                    if not getattr(self, "_warned_no_camera", False):
+                        self._warned_no_camera = True
+                        print(f"[camera {self.index}] 열 수 없습니다 — 웹캠이 없거나 다른 프로그램이 쓰는 중. "
+                              f"영상으로 하려면 --video 파일 (run_*.cmd 에 영상을 끌어다 놓기)", flush=True)
+                    self._capture = cap
+                    return self._capture
                 code = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
-                fourcc = "".join(chr((code >> 8 * k) & 0xFF) for k in range(4)) if code else "?"
+                fourcc = "".join(chr((code >> 8 * k) & 0xFF) for k in range(4)) if 0 < code < 2**32 - 1 else "?"
                 print(f"[camera {self.index}] {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))} "
                       f"{cap.get(cv2.CAP_PROP_FPS):.0f}fps codec={fourcc}   (실제 처리 fps 는 진단 탭 'core+store 처리 / fps')", flush=True)
             self._capture = cap
