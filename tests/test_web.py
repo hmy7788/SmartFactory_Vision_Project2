@@ -179,6 +179,33 @@ class CameraSourceTests(unittest.TestCase):
         self.assertEqual(src._result[0][0].class_name, "mother_part")
         self.assertIsNotNone(src.infer_ms)
 
+    def test_video_file_plays_at_file_speed_and_loops(self):
+        """--video: 녹화 영상을 파일 fps 로 재생하고, 끝나면 처음부터. 해상도는 파일 그대로."""
+        try:
+            import cv2
+        except ImportError:
+            self.skipTest("cv2 not installed")
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "assembly.avi")
+            vw = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), 20, (320, 240))
+            for i in range(10):
+                img = _img(320, 240); img[:, :, 1] = i * 20; vw.write(img)
+            vw.release()
+            result = _Result(_Obb([[160, 120, 200, 40, 0.0]], [0], [0.95]))
+            src = CameraSource(video=path, model=_Model(result), mapping_path=self.mapping, threaded=False)
+            t0 = time.time(); frames = []
+            for frame, _ in src.frames():
+                frames.append(frame)
+                if len(frames) >= 15:
+                    break
+            elapsed = time.time() - t0
+            self.assertEqual(len(frames), 15)                      # 10장짜리 영상인데 15장 → 반복 재생
+            self.assertTrue(all(f.input_valid for f in frames))
+            self.assertEqual(src.frame_size, (320, 240))
+            self.assertGreater(elapsed, 14 / 20 * 0.8)             # 20fps 로 재생 (빨리 감기 아님)
+            self.assertEqual(frames[-1].detections[0].class_name, "mother_part")
+
     def test_core_runs_on_camera_frames(self):
         """가짜 카메라 프레임이 코어까지 통과해 재료 판정을 낸다."""
         rows = [[600, 700, 1000, 160, 0.0], [120, 120, 80, 80, 0.0], [520, 120, 80, 80, 0.0],

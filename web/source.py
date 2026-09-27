@@ -173,8 +173,12 @@ class CameraSource:
     def __init__(self, index: int = 0, weights: str | None = "model/yolo_obb_parts.pt", frame_size=(1280, 720),
                  conf: float = 0.25, imgsz: int = 640, mapping_path: str | Path = "config/class_mapping.json",
                  capture=None, model=None, jpeg_quality: int = 80, refine_angles: bool = False,
-                 threaded: bool | None = None, max_fps: float = 20.0):
+                 threaded: bool | None = None, max_fps: float = 20.0, video: str | None = None, loop: bool = True):
         self.index, self.weights, self.frame_size = index, weights, tuple(frame_size)
+        # 8. 영상 파일 모드: 웹캠 대신 녹화한 조립 영상을 원래 속도로 재생하며 같은 판정을 돌린다 (끝나면 처음부터).
+        self.video, self.loop = (str(video) if video else None), loop
+        self._video_fps: float | None = None
+        self._next_frame_at = 0.0
         self.conf, self.imgsz, self.jpeg_quality = conf, imgsz, jpeg_quality
         self.refine_angles = refine_angles              # AABB(detect) 모델일 때 OpenCV 로 각도를 붙인다 (삐뚤게 놓은 경우용)
         # 7. 영상과 추론을 분리한다. 영상은 카메라 속도로 계속 내보내고, 추론은 뒤 스레드에서 되는 만큼만 돌려
@@ -202,10 +206,16 @@ class CameraSource:
     def _open_capture(self):
         if self._capture is None:
             import cv2, sys
-            backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else cv2.CAP_ANY   # 윈도우: DSHOW 가 빨리·안정적으로 열린다
-            cap = cv2.VideoCapture(self.index, backend)
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_size[0])
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_size[1])
+            if self.video:                           # 8. 영상 파일 — 해상도는 파일 그대로, 재생 속도는 파일 fps
+                cap = cv2.VideoCapture(self.video)
+                fps = cap.get(cv2.CAP_PROP_FPS) or 0
+                self._video_fps = fps if 1 <= fps <= 120 else 30.0
+                self._next_frame_at = time.perf_counter()
+            else:
+                backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else cv2.CAP_ANY   # 윈도우: DSHOW 가 빨리·안정적으로 열린다
+                cap = cv2.VideoCapture(self.index, backend)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_size[0])
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_size[1])
             self._capture = cap
         return self._capture
 
@@ -279,7 +289,18 @@ class CameraSource:
         try:
             while True:
                 cap = self._open_capture()
+                if self._video_fps:                      # 8. 영상 파일: 원래 속도로 (파일은 카메라와 달리 기다려 주지 않는다)
+                    wait = self._next_frame_at - time.perf_counter()
+                    if wait > 0:
+                        time.sleep(wait)
+                    self._next_frame_at = max(self._next_frame_at, time.perf_counter() - 1.0) + 1.0 / self._video_fps
                 ok, img = cap.read()
+                if (not ok or img is None) and self._video_fps and not self._injected:
+                    if not self.loop:
+                        return
+                    import cv2
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 영상 끝 → 처음부터
+                    ok, img = cap.read()
                 ts = now_ms()                            # 1. 캡처 시각
                 self.frame_id += 1
                 if not ok or img is None:

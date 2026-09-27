@@ -3,6 +3,8 @@
     python -m src.detection.realtime_inference                       # 웹캠 0, model/yolo_obb_parts.pt
     python -m src.detection.realtime_inference --source 1 --imgsz 480 --skip 2      # CPU 노트북: 입력 줄이고 2프레임에 한 번 추론
     python -m src.detection.realtime_inference --source data\\dataset_obb\\images\\test   # 폴더 → runs/obb_infer/test/
+    python -m src.detection.realtime_inference --source 조립영상.mp4 --save          # 영상 → 박스 그린 영상 runs/obb_infer/조립영상_obb.mp4
+    python -m src.detection.realtime_inference --source 조립영상.mp4 --save --no-window   # 창 없이 저장만 (빠름)
 
 레시피 대조·PASS/NG 까지 보려면 웹 화면(run_ui.cmd / run_live.cmd)을 쓴다 — 거기선 영상과 추론이 분리돼 있어 끊기지 않는다.
 단축키: q/ESC 종료 · s 저장 (runs/snapshots/) · p 일시정지
@@ -96,6 +98,9 @@ def main(argv=None):
     ap.add_argument("--skip", type=int, default=1, help="N 프레임마다 한 번 추론 (그 사이는 마지막 결과를 그대로 그림)")
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=720)
+    ap.add_argument("--save", nargs="?", const="auto", default=None,
+                    help="영상에 박스를 그려 mp4 로 저장 (경로 생략 시 runs/obb_infer/<이름>_obb.mp4)")
+    ap.add_argument("--no-window", action="store_true", help="창을 띄우지 않고 저장만 (--save 와 같이)")
     a = ap.parse_args(argv)
 
     import cv2
@@ -122,7 +127,20 @@ def main(argv=None):
     if not cap.isOpened():
         sys.exit(f"소스를 열 수 없습니다: {a.source}")
     snap = ROOT / "runs" / "snapshots"; snap.mkdir(parents=True, exist_ok=True)
+    writer, out_path, total = None, None, 0
+    is_file = not a.source.isdigit()
+    if a.save:
+        out_path = Path(a.save) if a.save != "auto" else ROOT / "runs" / "obb_infer" / f"{Path(a.source).stem if is_file else 'webcam'}_obb.mp4"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        src_fps = cap.get(cv2.CAP_PROP_FPS) or 30
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0) if is_file else 0
+        w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), src_fps if 1 <= src_fps <= 120 else 30, (w, h))
+        print(f"저장: {out_path}  ({w}x{h}, {src_fps:.0f}fps{f', {total}프레임' if total else ''})")
+    if a.no_window and not writer:
+        sys.exit("--no-window 는 --save 와 같이 써야 합니다")
     fps_hist, paused, k, result, infer_ms, n_snap = [], False, 0, None, 0.0, 0
+    counts_seen = {}
     prev = time.perf_counter()
     while True:
         if not paused:
@@ -138,6 +156,14 @@ def main(argv=None):
             now = time.perf_counter(); fps_hist.append(1 / max(now - prev, 1e-6)); prev = now
             fps_hist = fps_hist[-30:]
             vis = hud(vis, sum(fps_hist) / len(fps_hist), infer_ms, counts, paused)
+            for name, n in counts.items():
+                counts_seen[name] = max(counts_seen.get(name, 0), n)
+            if writer is not None:
+                writer.write(vis)
+                if a.no_window and total and k % 30 == 0:
+                    print(f"\r  {k}/{total} 프레임", end="", flush=True)
+        if a.no_window:
+            continue
         cv2.imshow("YOLO-OBB", vis)
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), 27):
@@ -146,7 +172,12 @@ def main(argv=None):
             p = snap / f"snap_{n_snap:04d}.jpg"; cv2.imwrite(str(p), vis); n_snap += 1; print(f"저장: {p}")
         if key == ord("p"):
             paused = not paused
-    cap.release(); cv2.destroyAllWindows()
+    cap.release()
+    if writer is not None:
+        writer.release()
+        print(f"\n저장 끝: {out_path}   (한 화면에 동시에 잡힌 최대 개수: " + ", ".join(f"{n} {c}" for n, c in sorted(counts_seen.items())) + ")")
+    if not a.no_window:
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

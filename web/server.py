@@ -196,9 +196,11 @@ def build(args) -> tuple[Starlette, Pipeline, Store, Hub]:
             raise SystemExit(f"가중치 파일이 없습니다: {weights}  (모델 담당에게 받아 model/ 에 두고 --weights 로 지정. "
                              f"카메라만 먼저 보려면 --no-model)")
         size = tuple(int(x) for x in args.camera_size.lower().split("x"))
+        if args.video and not Path(args.video).exists():
+            raise SystemExit(f"영상 파일이 없습니다: {args.video}")
         factory = lambda recipe, cfg: CameraSource(args.camera, weights, frame_size=size, conf=args.conf,
                                                     imgsz=args.imgsz, mapping_path=ROOT / "config/class_mapping.json",
-                                                    refine_angles=args.refine_angles)
+                                                    refine_angles=args.refine_angles, video=args.video)
         model = weights or "camera-only"
     pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
     return create_app(pipeline, store, hub), pipeline, store, hub
@@ -213,6 +215,7 @@ def parse(argv=None):
     p.add_argument("--db", default="data/pokayoke.db")
     p.add_argument("--jsonl", default="detections.jsonl")
     p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--video", default=None, help="웹캠 대신 녹화한 조립 영상 파일 (원래 속도로 반복 재생, 판정은 카메라와 같음). --source camera 로 간주")
     p.add_argument("--weights", default="model/yolo_obb_parts.pt")
     p.add_argument("--camera-size", default="1280x720", help="캡처 해상도 WxH. 카메라가 다른 값을 주면 실제 값으로 바꿔 쓴다")
     p.add_argument("--conf", type=float, default=0.25, help="모델 후보 임계 (판정 임계 0.5 는 config)")
@@ -224,7 +227,10 @@ def parse(argv=None):
     p.add_argument("--speed", type=float, default=1.0, help="데모 시나리오 배속 (안정화 창도 같이 나눔, demo 전용)")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8000)
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    if args.video:                                   # 영상 파일 = 카메라 경로를 그대로 쓴다
+        args.source = "camera"
+    return args
 
 
 def main(argv=None):
