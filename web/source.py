@@ -50,7 +50,7 @@ class DemoSource:
     """레시피에 맞춘 시나리오를 실시간 속도로 재생한다.
 
     재료 부족 → 재료 초과(NG) → 정확(READY→조립) → 빈 Mother → 첫 자리 조립 → 두 번째 자리 볼트 오조립(NG)
-    → 정정(PASS) → Mother 26° 기울임 2.6초(HOLD — 화면은 1.5초 유예 뒤에야 보류로 바뀐다) → 복귀(PASS) → [작업 완료] 를 누를 때까지 PASS 유지
+    → 정정(PASS) → Mother 26° 기울임 3.6초(코어는 HOLD. 작업 화면은 PASS 유지 + [작업 완료] 잠금, 3초 뒤 'Mother 를 똑바로' 한 줄) → 복귀(PASS) → [작업 완료] 를 누를 때까지 PASS 유지
     """
     frame_size = (1200, 900)
     has_video = False
@@ -100,7 +100,7 @@ class DemoSource:
             (0.0, first, 1.4),
             (0.0, second_wrong, 2.0),
             (0.0, correct, 1.6),
-            (26 * pi / 180, correct, 2.6),
+            (26 * pi / 180, correct, 3.6),
             (0.0, correct, None),          # None = 다음 reset 까지 유지
         ]
 

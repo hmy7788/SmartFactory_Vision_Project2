@@ -18,6 +18,13 @@ const HOLD_TEXT = {
   OUT_OF_ORDER_FRAME: () => ["영상이 끊겼습니다", "잠시 뒤 자동으로 이어집니다."],
 };
 const HOLD_TITLE = { MOTHER_ANGLE_OUT_OF_RANGE: "Mother 각도 초과", MOTHER_NOT_FOUND: "Mother 안 보임", MULTIPLE_MOTHERS: "Mother 두 개", AMBIGUOUS_ASSOCIATION: "부품 위치 모호 (손 가림)", INPUT_UNAVAILABLE: "카메라 입력 없음", FRAME_GAP: "영상 끊김", OUT_OF_ORDER_FRAME: "영상 끊김" };
+// 작업자가 고칠 수 있는 보류 원인 → 판정 카드 맨 아래 한 줄 (HOLD_HINT_MS 뒤). '보류' 라는 말은 쓰지 않는다
+const ACT_HINT = {
+  MOTHER_ANGLE_OUT_OF_RANGE: (p) => `Mother 를 똑바로 놓아 주세요 (지금 ${fmtDeg(p.mother_angle_deg)} 기울어짐)`,
+  MULTIPLE_MOTHERS: () => "작업대에 Mother 는 하나만 두세요",
+  MOTHER_NOT_FOUND: () => "Mother 가 카메라에 보이게 놓아 주세요",
+  INPUT_UNAVAILABLE: () => "카메라 연결을 확인해 주세요",
+};
 const fmtDeg = (d) => (d == null ? "?" : `${Math.abs(d).toFixed(0)}°`);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const chip = (cls, text, extra = "") => `<span class="chip ${cls} ${extra}">${esc(text)}</span>`;
@@ -47,14 +54,15 @@ function human(i) {
 
 // ── 상태 ────────────────────────────────────────────────────
 // 작업 화면은 매 프레임 payload 를 그대로 그리지 않는다. 코어의 '확정(confirmed)' 과 몇 가지 화면 완충값(UI) 으로
-// 만든 파생 상태(S.shown · S.rings · S.obs · S.matView · S.holdMode · S.chip) 만 그린다 — 판정은 바꾸지 않고 보여 주는 타이밍만 늦춘다.
+// 만든 파생 상태(S.shown · S.rings · S.obs · S.matView · S.holdHint) 만 그린다 — 판정은 바꾸지 않고 보여 주는 타이밍만 늦춘다.
+// 작업자에게 보류(HOLD) 는 보이지 않는다 (0927c): 코어가 판단을 보류해도 화면은 마지막 OK/NG·진행 상태를 그대로 둔다. 보류는 진단 탭에서만.
 //   MAT_WINDOW_MS  재료 수량: 최근 이 시간 안에서 가장 많이 나온 값 (한두 프레임 오검출·손 가림은 묻힌다. 코어는 1000ms 안정을 따로 요구)
-//   HOLD_GRACE_MS  보류(HOLD): 이 시간까지는 마지막 확정 판정을 흐리게 유지하고 '확인 중' 만 붙인다 (손이 지나가는 정도는 화면이 안 바뀐다)
-//   CHIP_DELAY_MS  '확인 중' 칩: 후보가 확정과 달라진 채 이 시간이 지나야 붙는다 (코어 안정화 400ms 안에 끝나는 변화엔 안 보인다)
-const UI = { MAT_WINDOW_MS: 700, HOLD_GRACE_MS: 1500, CHIP_DELAY_MS: 600 };
-const UI_VERSION = "화면 0927b";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
-const S = { view: "work", p: null, prev: null, rings: null, obs: null, geom: null, shown: null, matHist: [], matView: null, holdSince: null, holdMode: null,
-            unstableSince: null, chip: false, candKey: null, candSince: null, keys: {},
+//   GEOM_KEEP_MS   보류 중 영상 위 H 링을 마지막 위치에 이 시간까지 유지 (손이 지나갈 때 링이 사라졌다 나타나지 않게. 더 길면 Mother 가 움직였을 수 있어 지운다)
+//   HOLD_HINT_MS   작업자가 고쳐야 하는 보류(Mother 기울어짐·두 개·안 보임·카메라) 가 이 시간 넘게 이어질 때만 판정 카드 맨 아래에 한 줄 안내
+const UI = { MAT_WINDOW_MS: 700, GEOM_KEEP_MS: 1500, HOLD_HINT_MS: 3000 };
+const UI_VERSION = "화면 0927c";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
+const S = { view: "work", p: null, prev: null, rings: null, obs: null, geom: null, shown: null, matHist: [], matView: null, holdSince: null, holdHint: null,
+            candKey: null, candSince: null, keys: {},
             sub: "live", period: 7, events: [], hist: null, sel: null, ana: null, diag: null, recipes: null };
 const $ = (sel, el = document) => el.querySelector(sel);
 const main = $("#main"), hmid = $("#header-mid"), hright = $("#header-right");
@@ -77,7 +85,7 @@ const post = (url) => api(url, { method: "POST" });
 
 function onPayload(p) {
   const prev = S.p; S.prev = prev; S.p = p;
-  if (p.product_id !== prev?.product_id) { S.events = []; S.shown = null; S.rings = null; S.obs = null; S.matHist = []; S.holdSince = null; S.unstableSince = null; }
+  if (p.product_id !== prev?.product_id) { S.events = []; S.shown = null; S.rings = null; S.obs = null; S.matHist = []; S.holdSince = null; }
   S.events = p.events || S.events;
   deriveView(p);
   if (S.view === "work" || S.view === "diag") render(prev && sameShape(prev, p));
@@ -90,11 +98,12 @@ function sameShape(a, b) {   // 진단 탭: 큰 DOM 을 매 프레임 다시 그
 
 // ── 작업 화면 파생 상태 ────────────────────────────────────────
 // 원칙: 화면에 보이는 판정은 코어가 '확정' 한 것(confirmed) 이고, 후보(candidate) 는 프레임마다 바뀌므로 직접 그리지 않는다.
-// 코어는 HOLD 가 오면 confirmed 를 바로 비우지만 화면은 마지막 확정을 S.shown 에 들고 있다가 HOLD 가 HOLD_GRACE_MS 이상 이어질 때만 보류 화면으로 바꾼다.
+// 코어는 HOLD 가 오면 confirmed 를 바로 비우지만 화면은 마지막 확정을 S.shown 에 들고 그대로 보여 준다 (보류 화면 없음).
 function deriveView(p) {
   const t = p.ts_ms, cand = p.candidate, mat = p.phase === "CHECK_MATERIALS", holdNow = cand.status === "HOLD";
-  // 1. 재료 수량 완충 — 최근 MAT_WINDOW_MS 의 최빈값
-  if (mat) { S.matHist.push({ t, o: p.materials?.observed || {} }); S.matHist = S.matHist.filter((e) => t - e.t <= UI.MAT_WINDOW_MS); S.matView = modeCounts(S.matHist); }
+  // 1. 재료 수량 완충 — 최근 MAT_WINDOW_MS 의 최빈값. 보류 프레임(카메라 끊김 등) 은 수량이 0 이라 넣지 않는다
+  if (mat && holdNow) { /* 유지 */ }
+  else if (mat) { S.matHist.push({ t, o: p.materials?.observed || {} }); S.matHist = S.matHist.filter((e) => t - e.t <= UI.MAT_WINDOW_MS); S.matView = modeCounts(S.matHist); }
   else { S.matHist = []; S.matView = null; }
   // 2. 지금 후보가 언제부터 같은가 (READY·PASS 확정까지 남은 시간 막대)
   const key = JSON.stringify(cand);
@@ -102,24 +111,23 @@ function deriveView(p) {
   // 3. 마지막 확정 판정 — 단계가 바뀌면 버린다
   if (S.shown && S.shown.phase !== p.phase) S.shown = null;
   if (p.confirmed) S.shown = { phase: p.phase, status: p.confirmed.status, issues: p.confirmed.issues || [] };
-  // 4. HOLD 유예: 마지막 확정이 있고 HOLD 가 짧으면 'grace' (흐리게 유지), 길어지면 'hold' (보류 화면)
+  // 4. 보류는 화면에 띄우지 않는다. 작업자가 손으로 고칠 수 있는 원인이 HOLD_HINT_MS 넘게 이어질 때만 한 줄 안내 코드를 남긴다
+  //    (손 가림 AMBIGUOUS_ASSOCIATION 은 손을 떼면 저절로 풀리므로 안내하지 않는다)
   if (holdNow) { if (S.holdSince == null) S.holdSince = t; } else S.holdSince = null;
-  S.holdMode = !holdNow ? null : (S.shown && t - S.holdSince < UI.HOLD_GRACE_MS ? "grace" : "hold");
-  // 5. '확인 중' 칩 — 조립 단계에서 후보가 확정과 달라진 채 CHIP_DELAY_MS 가 지났을 때만
-  const unstable = !mat && !holdNow && !p.stable;
-  if (unstable) { if (S.unstableSince == null) S.unstableSince = t; } else S.unstableSince = null;
-  S.chip = unstable && t - S.unstableSince >= UI.CHIP_DELAY_MS;
+  const code = holdNow ? holdCode(p) : null;
+  S.holdHint = code && ACT_HINT[code] && t - S.holdSince >= UI.HOLD_HINT_MS ? code : null;
   // 6. 자리 상태(링·표) — 확정(confirmed) 에서만 만든다. 확정 전(조립 시작 직후)은 null = '전부 아직'.
   //    '지금' 칸의 이름은 코어가 stable 이라고 한 프레임에서만 찍는다: confirmed 는 매 프레임 같은 값이 실려 오지만
   //    observed 는 매 프레임 원시 검출이라, 그대로 쓰면 '지금' 칸이 프레임마다 깜빡인다 (09-27a 의 버그).
-  //    HOLD 중엔 유예든 보류든 마지막 상태를 그대로 둔다 — 다섯 줄이 한꺼번에 '보류' 로 바뀌지 않고, 표만 흐려진다.
+  //    보류 중엔 마지막 상태를 그대로 둔다 — 표는 보류를 모른다.
   if (mat || p.evaluated_phase !== p.phase) { S.rings = null; S.obs = null; }   // 재료 단계 · 재료→조립 전환 프레임
   else if (!holdNow) {
     if (p.confirmed) S.rings = ringsOf(p, p.confirmed);
     if (p.stable) S.obs = obsNames(p);
   }
-  // 7. 오버레이 기하 — HOLD 유예 중엔 마지막 기하를 그대로 그린다 (손이 지나갈 때 링이 사라졌다 나타나지 않게)
-  if (p.geometry?.pose) S.geom = p.geometry; else if (S.holdMode !== "grace") S.geom = null;
+  // 7. 오버레이 기하 — 보류가 GEOM_KEEP_MS 안이면 마지막 기하를 그대로 그린다 (손이 지나갈 때 링이 사라졌다 나타나지 않게)
+  S.geomKeep = holdNow && S.geom && t - S.holdSince < UI.GEOM_KEEP_MS;
+  if (p.geometry?.pose) S.geom = p.geometry; else if (!S.geomKeep) S.geom = null;
 }
 function modeCounts(hist) {
   const out = {};
@@ -159,13 +167,13 @@ function progressPct(p) {   // 지금 후보가 확정되기까지 (READY: 재�
 // 작업 화면은 네 조각을 따로 그린다. 각 조각은 자기 키가 바뀔 때만 다시 그린다 (막대·각도 숫자는 updateLive 가 제자리에서).
 // 영상 카드는 영상 유무·해상도가 바뀔 때만 — 전체를 다시 그리면 <img src=/video> 가 새로 열려 영상이 깜빡인다.
 function workKeys(p) {
-  const mat = p.phase === "CHECK_MATERIALS", d = mat ? matDiff(p) : null, holdLong = S.holdMode === "hold";
+  const mat = p.phase === "CHECK_MATERIALS", d = mat ? matDiff(p) : null, hold = p.candidate.status === "HOLD";
   return {
     frame: JSON.stringify([p.has_video, p.frame_size]),
     header: JSON.stringify([p.phase, p.recipe?.recipe_id, p.recipes]),
     note: JSON.stringify([p.video_at_end]),
-    table: JSON.stringify([p.phase, p.recipe?.recipe_id, mat ? [d.e, d.o] : [S.rings, S.obs, holdLong]]),
-    verdict: JSON.stringify([p.phase, p.recipe?.recipe_id, p.video_at_end, S.holdMode, holdLong && holdCode(p), S.chip,
+    table: JSON.stringify([p.phase, p.recipe?.recipe_id, mat ? [d.e, d.o] : [S.rings, S.obs]]),
+    verdict: JSON.stringify([p.phase, p.recipe?.recipe_id, p.video_at_end, S.shown?.status === "PASS" && hold, S.holdHint,
       S.shown && [S.shown.status, S.shown.issues], S.rings, d && [d.remove, d.add, d.o]]),
   };
 }
@@ -234,7 +242,6 @@ function renderWork(p) {
   if (k.note !== K.note) { K.note = k.note; const n = $("#video-note"); if (n) n.innerHTML = videoNote(p); }
   if (k.table !== K.table) {
     K.table = k.table; const t = $("#table-card"), mat = p.phase === "CHECK_MATERIALS";
-    t.className = "card" + (!mat && S.holdMode === "hold" ? " dim" : "");
     t.innerHTML = mat ? tableMaterials(p) : tableHoles(p);
   }
   if (k.verdict !== K.verdict) { K.verdict = k.verdict; const v = $("#verdict"); if (v) v.outerHTML = verdictCard(p); }
@@ -262,35 +269,27 @@ function tableMaterials(p) {
 }
 function tableHoles(p) {
   const exp = {}; (p.recipe.placements || []).forEach((pl) => (exp[pl.mother_hole] = pl));
-  const rings = S.rings || emptyRings(p), obs = S.obs || {}, holdLong = S.holdMode === "hold";
-  const LAB = { ok: "맞음", ng: "틀림", wait: "아직", skip: "비움", hold: "보류", none: "" };
+  const rings = S.rings || emptyRings(p), obs = S.obs || {};
+  const LAB = { ok: "✓ 맞음", ng: "✕ 틀림", wait: "아직", skip: "비움", none: "" };
   const rows = [1, 2, 3, 4, 5].map((h) => {
     const st = rings[h], ex = exp[h], ob = obs[h] || {};
     const seen = [ob.bolt, ob.part].filter(Boolean).map((c) => SHORT[c]).join(" + ");
     return `<tr class="${st}"><td>H${h}</td><td>${ex ? bolt(ex.bolt) + part(ex.part) : '<span style="color:var(--muted)">비워 둠</span>'}</td>
       <td class="now">${seen || "—"}</td><td class="st">${LAB[st] || ""}</td></tr>`;
   }).join("");
-  return `<h3>자리별 현황 <span class="note">${holdLong ? "보류 중 — 마지막으로 확인된 상태" : "순서는 상관없습니다 · 확정된 것만 표시"}</span></h3>
+  return `<h3>자리별 현황 <span class="note">순서는 상관없습니다 · 확정된 것만 표시</span></h3>
     <table class="t"><tr><th>자리</th><th>꽂을 것</th><th>지금</th><th>상태</th></tr>${rows}</table>`;
 }
 
 // 판정 카드. 그리는 재료는 deriveView() 가 만든 파생 상태뿐이다:
-//   S.holdMode  null / "grace"(마지막 확정을 흐리게 유지) / "hold"(보류 화면)
+//   S.holdHint  작업자가 고칠 보류가 길어졌을 때 맨 아래 한 줄 (그 밖의 보류는 화면에 안 나온다)
 //   S.shown     마지막 확정 판정 {status, issues} — NG 의 상세도 여기서 (후보 issues 는 프레임마다 흔들린다)
 //   S.matView   완충된 재료 수량 — 재료 단계 큰 글씨·칩은 이것으로
 //   S.rings     자리 상태 — '남은 자리' 목록은 이것으로
 function verdictCard(p) {
-  const mat = p.phase === "CHECK_MATERIALS", cand = p.candidate, shown = S.shown, dim = S.holdMode === "grace";
-  const stableChip = S.chip || dim ? `<span class="stable">${chip("muted", "확인 중")}</span>` : "";
-  let big = "", sub = "", body = "", hint = "", cls = "IN_PROGRESS";
-  if (S.holdMode === "hold") {
-    cls = "HOLD";
-    const code = holdCode(p);
-    const [t, d] = code ? HOLD_TEXT[code](p) : ["판단할 수 없습니다", "잠시 기다리세요."];
-    big = "잠깐"; sub = code ? HOLD_TITLE[code] : (mat ? "재료를 확인할 수 없습니다" : "판단할 수 없습니다");
-    if (!code && mat && !shown) { big = "준비 중"; sub = "재료 확인을 시작합니다"; cls = "IN_PROGRESS"; }
-    body = `<div class="reason"><div class="t" id="hold-t">${esc(t)}</div><div class="d">${esc(d)}</div><div class="e">보류는 불량이 아닙니다. 아무것도 빼지 마세요.</div></div>`;
-  } else if (mat) {
+  const mat = p.phase === "CHECK_MATERIALS", shown = S.shown, holdNow = p.candidate.status === "HOLD";
+  let big = "", sub = "", body = "", hint = "", cls = "IN_PROGRESS", locked = false;
+  if (mat) {
     const { e, o, remove, add } = matDiff(p), n = (c) => Math.abs((o[c] ?? 0) - (e[c] ?? 0));
     if (!remove.length && !add.length) {
       cls = "READY"; big = "준비 완료"; sub = "재료가 맞습니다 — 그대로 두세요";
@@ -307,8 +306,10 @@ function verdictCard(p) {
     const st = shown ? shown.status : "IN_PROGRESS";   // 조립 단계에서 아직 확정이 없으면(시작 직후) 후보와 무관하게 '조립 중'
     if (st === "PASS") {
       cls = "PASS"; big = "PASS"; sub = `${p.recipe.recipe_id}  전부 맞음`;
-      body = `<button class="bigbtn" id="btn-complete">작업 완료</button>`;
-      hint = p.video_at_end ? "영상이 끝나 마지막 장면을 유지하고 있습니다. 누르면 기록되고 영상이 처음부터 다시 재생됩니다."
+      locked = holdNow;       // 코어가 판단을 보류하는 동안엔 [작업 완료] 가 409 — 버튼만 잠근다
+      body = `<button class="bigbtn" id="btn-complete" ${locked ? "disabled" : ""}>작업 완료</button>`;
+      hint = locked ? "손을 떼고 잠시 기다리면 누를 수 있습니다."
+           : p.video_at_end ? "영상이 끝나 마지막 장면을 유지하고 있습니다. 누르면 기록되고 영상이 처음부터 다시 재생됩니다."
                             : "누르면 기록되고 다음 제품의 재료 확인으로 넘어갑니다.<br>누르기 전까지는 계속 보고 있습니다 — 빼면 다시 '조립 중'이 됩니다.";
     } else if (st === "NG") {
       cls = "NG"; big = "NG";
@@ -331,13 +332,14 @@ function verdictCard(p) {
       hint = `꽂고 손을 떼면 ${(p.timing.stable_ms / 1000).toFixed(1)}초 뒤 자동으로 확인합니다. 누를 것 없습니다.`;
     }
   }
+  if (S.holdHint) hint = `<span class="act">${esc(ACT_HINT[S.holdHint](p))}</span>`;
   setTimeout(() => { const b = $("#btn-complete"); if (b) b.onclick = async () => { b.disabled = true; const r = await post("/api/complete"); if (!r.ok) { alert(r.reason); b.disabled = false; } }; });
-  return `<div class="card verdict ${cls}${dim ? " dim" : ""}" id="verdict">${stableChip}<div class="big ${big.length > 4 ? "long" : ""}">${esc(big)}</div><div class="sub">${esc(sub)}</div><div class="body">${body}</div>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
+  return `<div class="card verdict ${cls}" id="verdict"><div class="big ${big.length > 4 ? "long" : ""}">${esc(big)}</div><div class="sub">${esc(sub)}</div><div class="body">${body}</div>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
 }
 function progressBar(label, p) { return `<div class="prog"><div class="cap">${esc(label)}</div><div class="bar"><i id="prog" style="width:${progressPct(p).toFixed(0)}%"></i></div></div>`; }
-function updateLive(p) {   // DOM 을 다시 그리지 않고 제자리에서 바뀌는 것: 진행 막대 · 보류 각도 숫자
+function updateLive(p) {   // DOM 을 다시 그리지 않고 제자리에서 바뀌는 것: 진행 막대 · 안내 줄의 각도 숫자
   const bar = $("#prog"); if (bar) bar.style.width = `${progressPct(p).toFixed(0)}%`;
-  const ht = $("#hold-t"); if (ht && holdCode(p) === "MOTHER_ANGLE_OUT_OF_RANGE") ht.textContent = HOLD_TEXT.MOTHER_ANGLE_OUT_OF_RANGE(p)[0];
+  const act = $("#verdict .hint .act"); if (act && S.holdHint) act.textContent = ACT_HINT[S.holdHint](p);
 }
 
 // ── 영상 오버레이 (canvas) ────────────────────────────────────
@@ -345,15 +347,13 @@ const COL = { ok: "#15803D", ng: "#C81E1E", wait: "#4C8DFF", skip: "#8A94A3", ho
 function drawOverlay(p, diag) {
   const cv = $("#overlay"); if (!cv || !p) return;
   const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, cv.width, cv.height);
-  const g = (p.geometry?.pose ? p.geometry : (!diag && S.holdMode === "grace" && S.geom)) || p.geometry || {}, pose = g.pose;
+  const g = (p.geometry?.pose ? p.geometry : (!diag && S.geomKeep && S.geom)) || p.geometry || {}, pose = g.pose;
   ctx.lineWidth = 3; ctx.font = "bold 34px sans-serif"; ctx.textAlign = "center";
   if (!p.has_video) { const order = { mother_part: 0, part_2hole: 1, part_3hole: 1 }; for (const d of [...(p.detections || [])].sort((a, b) => (order[a.class_name] ?? 2) - (order[b.class_name] ?? 2))) drawSynthetic(ctx, d); }   // 카메라 없음: 검출을 그림으로 대신 (볼트가 위)
   if (diag) for (const d of p.detections || []) drawObb(ctx, d, d.class_name === "mother_part" ? "#5FD38D" : d.class_name.startsWith("bolt") ? "#FFD166" : d.class_name === "part_2hole" ? "#7FE0FF" : "#FF9BD0", `${d.class_name} ${d.confidence.toFixed(2)}`);
   if (!pose) {  // HOLD 등 geometry 없음 — Mother 검출만 있으면 윤곽과 각도
     const m = (p.detections || []).filter((d) => d.class_name === "mother_part");
-    if (m.length === 1 && !diag) drawObb(ctx, m[0], "#9A6B12", null, [10, 6]);
-    const angleHold = (p.candidate.issues || []).some((i) => i.code === "MOTHER_ANGLE_OUT_OF_RANGE");
-    if (m.length === 1 && p.mother_angle_deg != null && (diag || angleHold)) { ctx.fillStyle = "#FFD166"; ctx.fillText(`${p.mother_angle_deg.toFixed(1)}°`, m[0].center_xy[0], m[0].center_xy[1] - m[0].height / 2 - 60); }
+    if (m.length === 1 && p.mother_angle_deg != null && diag) { ctx.fillStyle = "#FFD166"; ctx.fillText(`${p.mother_angle_deg.toFixed(1)}°`, m[0].center_xy[0], m[0].center_xy[1] - m[0].height / 2 - 60); }
     return;
   }
   // Mother 윤곽

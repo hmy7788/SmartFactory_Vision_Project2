@@ -81,9 +81,10 @@ table.t th { text-align: left; font-size: 14px; color: var(--muted); font-weight
 table.t td { background: #FAFBFD; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 8px 12px; font-size: 17px; }
 table.t td:first-child { border-left: 1px solid var(--line); border-radius: 7px 0 0 7px; font-weight: 700; }
 table.t td:last-child { border-right: 1px solid var(--line); border-radius: 0 7px 7px 0; font-weight: 700; }
-table.t tr.ok td { color: inherit; } table.t tr.ok td.st { color: var(--ok); }
+/* 표 색 (0927c): 채운 줄 = 결과(초록 맞음 · 빨강 틀림), 흰 줄 = 아직 할 것(파란 글씨) · 비움(회색). 다 끝나면 표가 초록으로 찬다 */
+table.t tr.ok td { background: var(--ok-bg); border-color: #B5DEC1; } table.t tr.ok td.st { color: var(--ok); }
 table.t tr.ng td { background: var(--ng-bg); } table.t tr.ng td.st, table.t tr.ng td.now { color: var(--ng); }
-table.t tr.wait td { background: var(--wait-bg); } table.t tr.wait td.st { color: var(--wait); }
+table.t tr.wait td.st { color: var(--wait); }
 table.t tr.hold td { background: var(--hold-bg); } table.t tr.hold td.st { color: var(--hold); }
 table.t tr.skip td { color: var(--muted); } table.t tr.skip td.st { color: var(--skip); }
 table.t tr.sel td { background: var(--soft); border-color: var(--blue); }
@@ -100,17 +101,12 @@ table.t tr.click { cursor: pointer; }
 .verdict { display: flex; flex-direction: column; align-items: center; text-align: center; border-width: 4px; padding: 28px 40px; position: relative; }
 .verdict.PASS { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
 .verdict.NG { background: var(--ng-bg); border-color: var(--ng); color: var(--ng); }
-.verdict.HOLD { background: var(--hold-bg); border-color: var(--hold); color: var(--hold); }
 .verdict.IN_PROGRESS, .verdict.READY { background: var(--wait-bg); border-color: var(--wait); color: var(--wait); }
-.verdict .stable { position: absolute; right: 24px; top: 20px; }
-/* HOLD 유예: 손이 지나가는 1.5초 동안 카드는 그대로 두고 오른쪽 위 '확인 중' 칩만 붙인다 (카드 전체를 흐리면 그것도 깜빡임이다) */
-.verdict.dim .bigbtn { opacity: 0.45; pointer-events: none; }     /* 보류 중엔 [작업 완료] 가 409 를 받으므로 눌리지 않게 */
-/* 1.5초 넘는 보류: 자리 표는 마지막 확인 상태를 흐리게 유지 (다섯 줄을 '보류' 로 바꾸지 않는다) */
-.card.dim table.t { opacity: 0.45; transition: opacity 0.3s; }
+/* 보류는 작업 화면에 없다 (0927c). 코어가 보류 중이면 [작업 완료] 만 잠기고(.bigbtn:disabled), 고칠 게 있으면 맨 아래 한 줄 */
+.verdict .hint .act { color: var(--ink); font-weight: 700; }
 #sidebar .ver { color: #5F74A8; font-size: 11px; margin-bottom: 10px; text-align: center; }
-.verdict.dim .stable .chip { color: var(--hold); background: var(--hold-bg); font-weight: 700; }
 .verdict.READY { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
-/* 확정까지 남은 시간 막대 (재료 READY 1초 · 조립 후보 0.4초). 코어가 세는 시간을 보여 줄 뿐, 화면이 판정하지 않는다 */
+/* 확정까지 남은 시간 막대 (재료 READY 1초). 코어가 세는 시간을 보여 줄 뿐, 화면이 판정하지 않는다 */
 .prog { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 24px; }
 .prog .cap { color: var(--muted); font-size: 17px; margin-bottom: 10px; }
 .prog .bar { height: 22px; border-radius: 11px; background: #EEF1F6; overflow: hidden; }
