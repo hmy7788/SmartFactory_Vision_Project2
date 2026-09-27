@@ -14,6 +14,7 @@ class Phase(str, Enum):
     CHECK_MATERIALS = "CHECK_MATERIALS"
     REGISTER_MOTHER = "REGISTER_MOTHER"   # only when config registration.enabled
     ASSEMBLING = "ASSEMBLING"
+    RESULT = "RESULT"                     # final verdict shown, waiting for the next product
 
 
 @dataclass(frozen=True, order=True)
@@ -50,3 +51,7 @@ class Snapshot:
     registration: dict = field(default_factory=dict)
     # Holes whose content is currently remembered because it is hidden (hand, part).
     occluded: tuple[int, ...] = ()
+    # "NG" once a confirmed NG has lasted assembly.ng_alert_ms (red screen + sound), else "".
+    alert: str = ""
+    # Final verdict in Phase.RESULT: product_seq, recipe_id, result PASS/NG, issues, assembly_ms, decided_by.
+    result: dict = field(default_factory=dict)

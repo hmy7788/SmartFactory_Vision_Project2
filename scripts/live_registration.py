@@ -56,32 +56,66 @@ def find_weights():
 class Painter:
     """Hangul text via Pillow (cv2.putText cannot draw Korean)."""
 
+    FONT_PATHS = ("C:/Windows/Fonts/malgunbd.ttf", "C:/Windows/Fonts/malgun.ttf",
+                  "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+                  "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+                  "/System/Library/Fonts/AppleSDGothicNeo.ttc")
+
     def __init__(self):
-        self.font = None
+        self.path, self.fonts = None, {}
         try:
             from PIL import ImageFont
-            for path in ("C:/Windows/Fonts/malgun.ttf", "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-                         "/System/Library/Fonts/AppleSDGothicNeo.ttc"):
+            for path in self.FONT_PATHS:
                 try:
-                    self.font = ImageFont.truetype(path, 26)
+                    ImageFont.truetype(path, 26)
+                    self.path = path
                     break
                 except OSError:
                     continue
         except ImportError:
             pass
+        self.font = self._font(26)
 
-    def text(self, image, lines, origin=(16, 16)):
-        if self.font is None:
-            for i, (line, color) in enumerate(lines):
-                cv2.putText(image, line.encode("ascii", "replace").decode(), (origin[0], origin[1]+28*(i+1)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+    def _font(self, size):
+        if self.path is None:
+            return None
+        if size not in self.fonts:
+            from PIL import ImageFont
+            self.fonts[size] = ImageFont.truetype(self.path, size)
+        return self.fonts[size]
+
+    def text(self, image, lines, origin=(16, 16), size=26):
+        """lines: [(text, bgr)] drawn top-left."""
+        return self.items(image, [(line, color, (origin[0], origin[1]+int(size*1.3)*i), size)
+                                  for i, (line, color) in enumerate(lines)])
+
+    def banner(self, image, text, bgr, size=48, y_ratio=0.5, box=True):
+        """Large centred text with a dark box behind it."""
+        return self.items(image, [(text, bgr, None, size)], box=box, y_ratio=y_ratio)
+
+    def items(self, image, entries, box=False, y_ratio=0.5):
+        if self.path is None:
+            for text, color, xy, size in entries:
+                scale = size/30
+                if xy is None:
+                    (w, h), _ = cv2.getTextSize(text.encode("ascii", "replace").decode(), cv2.FONT_HERSHEY_SIMPLEX, scale, 2)
+                    xy = ((image.shape[1]-w)//2, int(image.shape[0]*y_ratio))
+                cv2.putText(image, text.encode("ascii", "replace").decode(), (xy[0], xy[1]+size),
+                            cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2)
             return image
         from PIL import Image, ImageDraw
         pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-        draw = ImageDraw.Draw(pil)
-        for i, (line, color) in enumerate(lines):
-            draw.text((origin[0], origin[1]+34*i), line, font=self.font, fill=color[::-1],
-                      stroke_width=3, stroke_fill=(0, 0, 0))
+        draw = ImageDraw.Draw(pil, "RGBA")
+        for text, color, xy, size in entries:
+            font = self._font(size)
+            if xy is None:
+                left, top, right, bottom = draw.textbbox((0, 0), text, font=font, stroke_width=3)
+                w, h = right-left, bottom-top
+                xy = ((pil.width-w)//2, int(pil.height*y_ratio - h/2))
+                if box:
+                    pad = size//2
+                    draw.rectangle((xy[0]-pad, xy[1]-pad//2, xy[0]+w+pad, xy[1]+h+pad), fill=(0, 0, 0, 170))
+            draw.text(xy, text, font=font, fill=tuple(color[::-1]), stroke_width=3, stroke_fill=(0, 0, 0))
         return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
 
 

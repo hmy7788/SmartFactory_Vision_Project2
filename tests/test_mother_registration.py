@@ -126,11 +126,28 @@ class TrackerTests(unittest.TestCase):
         _, issues, _ = self.tracker.update(5000, [])
         self.assertEqual([i.code for i in issues], ["MOTHER_LOST"])
 
-    def test_small_jitter_ignored(self):
+    def test_small_jitter_followed_smoothly(self):
         jitter = replace(mother(), center_xy=(610, 703))
         lock, issues, _ = self.tracker.update(1300, [jitter])
-        self.assertIs(lock, self.lock)
         self.assertEqual(issues, ())
+        self.assertAlmostEqual(lock.center[0], 600+0.15*10)       # follow_gain, no jump
+        for t in range(1400, 3400, 100):
+            lock, issues, _ = self.tracker.update(t, [jitter])
+        self.assertAlmostEqual(lock.center[0], 610, delta=0.5)   # converges without MOTHER_MOVING
+        self.assertEqual(issues, ())
+
+    def test_seated_bolts_pull_holes(self):
+        seated = self.lock.geometry(self.config)["holes"][1]
+        seated = (seated[0]+12, seated[1])                           # bolt sits 12 px right of the grid
+        for _ in range(20):
+            hole = self.tracker.lock.geometry(self.config)["holes"][1]
+            self.tracker.refine([(hole, seated)], 200)
+        self.assertAlmostEqual(self.tracker.lock.center[0], 612, delta=0.5)
+        far = (seated[0]+500, seated[1])
+        for _ in range(50):                                          # capped at 0.3 x spacing
+            hole = self.tracker.lock.geometry(self.config)["holes"][1]
+            self.tracker.refine([(hole, far)], 200)
+        self.assertAlmostEqual(self.tracker.lock.center[0], 660, delta=0.5)
 
     def test_sustained_move_relocks_and_keeps_h1(self):
         moved = replace(mother(), center_xy=(750, 720), angle_rad=pi + 5*pi/180)   # same axis, flipped OBB angle

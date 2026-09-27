@@ -19,10 +19,24 @@
   "registration": {
     "enabled": true,
     "register_stable_ms": 1000,
-    "occlusion_hold_ms": 1500,
     "ambiguous_report_ms": 1000,
     "hole_min_contrast": 0.45,
     "move_confirm_ms": 1000,
-    "lost_hold_ms": 3000
+    "lost_hold_ms": 3000,
+    "follow_gain": 0.15,
+    "landmark_gain": 0.3
+  },
+  "assignment": {
+    "accept_ratio": 0.40,
+    "switch_ratio": 0.30,
+    "bolt_perp_ratio": 0.80,
+    "part_assign_max_angle_deg": 45
+  },
+  "assembly": {
+    "pass_confirm_ms": 2000,
+    "ng_alert_ms": 400,
+    "occluded_weight": 0.3,
+    "evidence_keep_ms": 1400,
+    "evidence_drop_ms": 80
   }
 }

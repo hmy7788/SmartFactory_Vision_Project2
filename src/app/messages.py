@@ -3,12 +3,14 @@
 NAMES = {"bolt_1": "노랑 볼트", "bolt_2": "주황 볼트", "part_2hole": "2구 나무조각",
          "part_3hole": "3구 나무조각", "mother_part": "Mother"}
 
-PHASES = {"CHECK_MATERIALS": "1. 재료 확인", "REGISTER_MOTHER": "2. Mother 등록", "ASSEMBLING": "3. 조립 검사"}
+PHASES = {"CHECK_MATERIALS": "1. 재료 확인", "REGISTER_MOTHER": "2. Mother 등록", "ASSEMBLING": "3. 조립 검사",
+          "RESULT": "4. 최종 판정"}
 STATUSES = {"READY": "재료 준비 완료", "IN_PROGRESS": "조립 중", "PASS": "완료 (PASS)",
             "NG": "오류 (NG)", "HOLD": "판정 대기"}
 
 # Severity: error = worker must fix, info = progress guidance, wait = no judgement yet
-ERROR_CODES = {"AMBIGUOUS_ASSOCIATION", "WRONG_BOLT", "WRONG_PART", "EXTRA_COMPONENT", "UNEXPECTED_COMPONENT",
+# AMBIGUOUS_ASSOCIATION is deliberately NOT an error (never red): position is only unclear.
+ERROR_CODES = {"WRONG_BOLT", "WRONG_PART", "EXTRA_COMPONENT", "UNEXPECTED_COMPONENT",
                "PART_ORIENTATION_ERROR", "MATERIAL_EXCESS", "MATERIAL_UNEXPECTED"}
 INFO_CODES = {"MISSING_BOLT", "MISSING_PART", "MATERIAL_MISSING", "MOTHER_REGISTERING"}
 
@@ -24,6 +26,7 @@ STATIC = {
     "MOTHER_REGISTERING": "손을 떼고 잠시 기다려주세요 (Mother 등록 중)",
     "MOTHER_MOVING": "Mother가 움직였습니다. 손을 떼면 다시 고정합니다",
     "MOTHER_LOST": "Mother가 오래 가려져 있습니다",
+    "MOTHER_RELOCKED": "Mother 위치를 다시 맞췄습니다",
     "AMBIGUOUS_ASSOCIATION": "부품 위치가 애매합니다. 구멍에 정확히 맞춰주세요",
     "FRAME_GAP": "영상 지연 (추론 속도 부족)",
     "OUT_OF_ORDER_FRAME": "프레임 순서 오류",
@@ -72,3 +75,20 @@ def severity(issue):
     if issue.code in INFO_CODES:
         return "info"
     return "wait"
+
+
+def final_message(result):
+    """Banner text for Phase.RESULT."""
+    if result.get("result") == "PASS":
+        return "[정답 확정]  다음 레시피를 선택하세요  [1] [2] [3]"
+    return "[오답 확정]  재조립하세요  [r] 재조립  /  [1][2][3] 다음 제품"
+
+
+def final_issue_message(issue):
+    """In the final NG list a missing component is a defect, not 'in progress'."""
+    code, hole = issue.code, f"H{issue.hole_id}"
+    if code == "MISSING_BOLT":
+        return f"{hole}: {name(issue.expected)} 누락"
+    if code == "MISSING_PART":
+        return f"{hole}: {name(issue.expected)} 누락"
+    return message(issue)

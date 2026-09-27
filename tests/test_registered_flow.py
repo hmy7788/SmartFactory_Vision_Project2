@@ -23,6 +23,7 @@ class RegisteredFlowTests(unittest.TestCase):
     def setUp(self):
         self.config = load_config(ROOT/"config/mvp.json")
         self.assertTrue(self.config["registration"]["enabled"])
+        self.config["assembly"] = {"pass_confirm_ms": 60000}     # no automatic final verdict here
         self.recipe = load_recipe(ROOT/"config/recipes/recipe_1.json")
         self.service = InspectionService(self.config, self.recipe)
         self.time, self.frame_id = -100, -1

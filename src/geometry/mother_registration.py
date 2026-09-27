@@ -43,6 +43,10 @@ DEFAULTS = {
     "move_confirm_ms": 1000,
     "reliable_length_ratio": [0.9, 1.1],  # detection length vs locked length
     "lost_hold_ms": 3000,
+    "follow_gain": 0.15,               # small moves: follow a full-size Mother detection smoothly
+    "landmark_gain": 0.3,              # small moves: pull holes onto seated bolts
+    "landmark_max_offset_ratio": 0.3,  # x hole spacing, cap of the bolt-based correction
+    "landmark_max_distance_ratio": 0.3,  # only bolts this close to their hole are landmarks
 }
 
 
@@ -101,6 +105,18 @@ class MotherLock:
         geometry = build_geometry(self.pose(), config, self.hole_local)
         geometry["registered"] = True
         return geometry
+
+    def shifted(self, dx, dy):
+        return MotherLock((self.center[0]+dx, self.center[1]+dy), self.width, self.height,
+                          self.angle_rad, self.hole_local, self.locked_at_ms)
+
+    def blended(self, detection, gain):
+        """Move a fraction ``gain`` towards a (full-size) detection; size and holes kept."""
+        target = self.moved_to(detection, self.locked_at_ms)
+        cx = self.center[0] + gain*(target.center[0]-self.center[0])
+        cy = self.center[1] + gain*(target.center[1]-self.center[1])
+        angle = self.angle_rad + gain*_wrap(target.angle_rad-self.angle_rad)
+        return MotherLock((cx, cy), self.width, self.height, angle, self.hole_local, self.locked_at_ms)
 
     def moved_to(self, detection, timestamp_ms):
         length, short, angle = major_axis(detection)
@@ -237,25 +253,51 @@ class MotherRegistrar:
 
 
 class MotherTracker:
-    """Keeps the lock during assembly; re-locks only after a sustained move."""
+    """Keeps the lock during assembly.
+
+    * Hidden / partly hidden Mother: the lock is trusted as is.
+    * Small drift (worker nudges the Mother): the lock follows a full-size
+      Mother detection with ``follow_gain`` and seated bolts pull the holes
+      onto themselves with ``landmark_gain`` (``refine``).
+    * Large sustained move: re-lock after ``move_confirm_ms`` (MOTHER_MOVING).
+    """
 
     def __init__(self, lock, config):
         self.config = config
         self.reg = registration_config(config)
-        self.lock = lock
+        self.base = lock
+        self.offset = (0.0, 0.0)
         self.pending = None
         self.lost_since = None
+
+    @property
+    def lock(self):
+        return self.base.shifted(*self.offset) if self.offset != (0.0, 0.0) else self.base
 
     def _reliable(self, detection):
         length = major_axis(detection)[0]
         low, high = self.reg["reliable_length_ratio"]
-        return low*self.lock.width <= length <= high*self.lock.width
+        return low*self.base.width <= length <= high*self.base.width
 
     def _deviation(self, lock, detection):
         candidate = lock.moved_to(detection, 0)
         shift = hypot(candidate.center[0]-lock.center[0], candidate.center[1]-lock.center[1])/lock.width
         turn = abs(degrees(_wrap(candidate.angle_rad-lock.angle_rad)))
         return shift, turn
+
+    def refine(self, landmarks, step_px):
+        """landmarks: [(hole_point, observed_point)] of bolts seated in holes."""
+        if not landmarks or step_px <= 0:
+            return
+        dx = sum(o[0]-h[0] for h, o in landmarks)/len(landmarks)
+        dy = sum(o[1]-h[1] for h, o in landmarks)/len(landmarks)
+        gain = self.reg["landmark_gain"]
+        ox, oy = self.offset[0]+gain*dx, self.offset[1]+gain*dy
+        limit = self.reg["landmark_max_offset_ratio"]*step_px
+        norm = hypot(ox, oy)
+        if norm > limit:
+            ox, oy = ox*limit/norm, oy*limit/norm
+        self.offset = (ox, oy)
 
     def update(self, timestamp_ms, mothers):
         """Returns (lock, issues, events)."""
@@ -268,13 +310,15 @@ class MotherTracker:
                 return self.lock, (Issue("MOTHER_LOST"),), ()
             return self.lock, (), ()
         self.lost_since = None
-        detection = min(reliable, key=lambda m: hypot(m.center_xy[0]-self.lock.center[0],
-                                                      m.center_xy[1]-self.lock.center[1]))
-        shift, turn = self._deviation(self.lock, detection)
+        detection = min(reliable, key=lambda m: hypot(m.center_xy[0]-self.base.center[0],
+                                                      m.center_xy[1]-self.base.center[1]))
+        shift, turn = self._deviation(self.base, detection)
         if shift <= self.reg["move_tolerance_ratio"] and turn <= self.reg["move_angle_deg"]:
             self.pending = None
+            if self.reg["follow_gain"] > 0:
+                self.base = self.base.blended(detection, self.reg["follow_gain"])
             return self.lock, (), ()
-        candidate = self.lock.moved_to(detection, timestamp_ms)
+        candidate = self.base.moved_to(detection, timestamp_ms)
         if self.pending is not None:
             p_shift, p_turn = self._deviation(self.pending, detection)
             if p_shift > self.reg["move_tolerance_ratio"] or p_turn > self.reg["move_angle_deg"]:
@@ -283,9 +327,9 @@ class MotherTracker:
             self.pending = candidate
         if timestamp_ms-self.pending.locked_at_ms < self.reg["move_confirm_ms"]:
             return self.lock, (Issue("MOTHER_MOVING"),), ()
-        self.lock, self.pending = candidate, None
+        self.base, self.pending, self.offset = candidate, None, (0.0, 0.0)
         issues = ()
-        if abs(degrees(_wrap(self.lock.angle_rad))) > self.config["max_mother_angle_deg"] and \
-                abs(degrees(_wrap(self.lock.angle_rad-pi))) > self.config["max_mother_angle_deg"]:
+        if abs(degrees(_wrap(self.base.angle_rad))) > self.config["max_mother_angle_deg"] and \
+                abs(degrees(_wrap(self.base.angle_rad-pi))) > self.config["max_mother_angle_deg"]:
             issues = (Issue("MOTHER_ANGLE_OUT_OF_RANGE"),)
         return self.lock, issues, ({"event_type": "MOTHER_RELOCKED", "timestamp_ms": timestamp_ms},)

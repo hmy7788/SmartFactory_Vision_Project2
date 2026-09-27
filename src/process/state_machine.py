@@ -30,6 +30,15 @@ class StateMachine:
         changed = previous != (self.phase, self.status, self.confirmed)
         return stable, changed
 
+    def finish(self, status, candidate):
+        """ASSEMBLING -> RESULT with the final verdict."""
+        self.phase = Phase.RESULT
+        self.status, self.confirmed = status, candidate
+
+    def resume_assembly(self):
+        """RESULT (NG) -> ASSEMBLING to re-assemble; evidence is rebuilt."""
+        self.begin_assembly()
+
     def begin_assembly(self):
         """REGISTER_MOTHER -> ASSEMBLING once the Mother lock exists."""
         self.phase = Phase.ASSEMBLING
