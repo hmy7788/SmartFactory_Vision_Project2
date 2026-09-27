@@ -210,3 +210,15 @@ run_live.cmd 는 `--imgsz 480` 으로 띄운다(640 대비 약 2배 빠름, 부�
 - **[새 작업]·[작업 완료]** 는 영상을 처음으로 되감는다 (`CameraSource.reset()`) — 다음 제품 = 같은 영상 다시.
 - **박스가 그려진 영상은 넣지 말 것**: `save_video_obb.cmd` 가 만든 `*_obb.mp4` 는 박스·라벨이 화면에 박혀 있어 모델이 부품을 못 잡는다 (재료 확인에서 멈춘다). 원본 영상을 넣는다.
 - 검사: `tests/test_web.py::CameraSourceTests::test_video_end_hold_keeps_last_frame_and_reset_rewinds`.
+
+## MES 연동 (`--mes-broker`) — 브랜치 yuseong/mes-mqtt
+
+`python -m web.server --video 영상.mp4 --mes-broker localhost:1883 --station VIS-01` (또는 `run_station_mes.cmd`).
+MQTT 로 MES(스프링부트 `pokayoke-mes`) 와 붙는다. 계약·규칙·이유는 [mes_mqtt.md](mes_mqtt.md).
+
+- 작업지시가 레시피·수량을 정한다: 헤더 드롭다운 대신 `작업지시 WO-… · recipe_2 v3 · 3/10`, `/api/recipe/*` 는 409, 레시피 탭 버튼 잠김
+- MES 가 내려준 레시피는 `data/mes/recipes/` 에 저장되고 같은 이름의 로컬 레시피(`config/recipes`) 를 덮는다
+- 진행 중 작업지시가 없거나 다 채우면 판정 카드는 `대기` / `작업지시 완료`, [작업 완료] 는 409
+- [작업 완료] → 제품 결과를 `data/mes/mes_link.db` 의 outbox 에 먼저 쓰고, 보내기 스레드가 QoS 1 로 보낸다. 브로커가 끊겨도 검사는 계속, 다시 붙으면 순서대로
+- 헤더 점: 초록 연결됨, 빨강 끊김 (못 보낸 건수는 점에 마우스)
+- 코드: `web/mes_link.py` (`MesLink` 판단 · `PahoTransport` 통신), 검사: `tests/test_mes_link.py` (가짜 전송 — 브로커 없이)

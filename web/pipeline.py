@@ -30,12 +30,16 @@ from web.source import now_ms
 from web.store import Store
 
 
-def list_recipes(recipe_dir: Path) -> list[dict]:
-    out = []
-    for path in sorted(recipe_dir.glob("*.json")):
-        data = json.loads(path.read_text(encoding="utf-8"))
-        out.append({"recipe_id": data["recipe_id"], "placements": data["placements"], "file": path.name})
-    return out
+def list_recipes(recipe_dirs) -> list[dict]:
+    """레시피 폴더(들) 의 *.json. 뒤 폴더가 앞 폴더를 덮는다 — MES 가 내려준 레시피(data/mes_recipes) 가 로컬 것보다 우선."""
+    dirs = [recipe_dirs] if isinstance(recipe_dirs, (str, Path)) else list(recipe_dirs)
+    found: dict[str, dict] = {}
+    for d in dirs:
+        for path in sorted(Path(d).glob("*.json")):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            found[data["recipe_id"]] = {"recipe_id": data["recipe_id"], "placements": data["placements"], "file": path.name,
+                                        "path": str(path), "version": data.get("version"), "source": data.get("source", "local")}
+    return [found[k] for k in sorted(found)]
 
 
 def _jsonable(obj):
@@ -52,11 +56,14 @@ def _jsonable(obj):
 class Pipeline:
     def __init__(self, config: dict, recipe_dir: Path, store: Store, source_factory: Callable,
                  recipe_id: str, on_payload: Callable[[dict, bytes | None], None], model_file: str = "demo"):
-        self.config, self.recipe_dir, self.store = config, Path(recipe_dir), store
-        self.recipes = {r["recipe_id"]: r for r in list_recipes(self.recipe_dir)}
+        self.config, self.store = config, store
+        self.recipe_dirs = [Path(recipe_dir)] if isinstance(recipe_dir, (str, Path)) else [Path(d) for d in recipe_dir]
+        self.recipe_dir = self.recipe_dirs[0]
+        self.recipes = {r["recipe_id"]: r for r in list_recipes(self.recipe_dirs)}
         if recipe_id not in self.recipes:
             raise KeyError(f"unknown recipe {recipe_id}; have {sorted(self.recipes)}")
-        self.recipe = load_recipe(self.recipe_dir / self.recipes[recipe_id]["file"])
+        self.recipe = load_recipe(self.recipes[recipe_id]["path"])
+        self.mes = None                             # web/mes_link.MesLink — 붙이면 작업지시가 레시피·수량을 정한다
         self.service = InspectionService(config, self.recipe)
         self.source = source_factory(self.recipe, config)
         self.on_payload = on_payload
@@ -75,11 +82,18 @@ class Pipeline:
     def refresh_recipes(self) -> list[dict]:
         """config/recipes/*.json 을 다시 읽는다. 서버를 켠 뒤 추가한 레시피도 재시작 없이 쓰기 위해.
         프레임마다 읽지 않고 레시피 탭을 열 때와 레시피를 고를 때만 부른다 (그때만 바뀔 수 있으니까)."""
-        found = list_recipes(self.recipe_dir)
+        found = list_recipes(self.recipe_dirs)
         self.recipes = {r["recipe_id"]: r for r in found}
         return found
 
+    def attach_mes(self, link) -> None:
+        """MES 연동. 작업지시가 오면(다른 스레드) 명령 큐로 넘겨 프레임 사이에 적용한다."""
+        self.mes = link
+        link.on_work_order = lambda wo: self._commands.put(("workorder", wo))
+
     def select_recipe(self, recipe_id: str) -> None:
+        if self.mes is not None:                    # 레시피는 작업지시가 정한다 — 작업자가 고르는 것 자체가 실수의 원인
+            raise PermissionError("MES 연동 중에는 레시피를 작업지시가 정합니다")
         self.refresh_recipes()
         if recipe_id not in self.recipes:
             raise KeyError(recipe_id)
@@ -90,6 +104,10 @@ class Pipeline:
 
     def complete(self) -> dict:
         """PASS 확정 상태에서만 허용. 아니면 이유를 돌려주고 아무것도 하지 않는다."""
+        if self.mes is not None:
+            ok, reason = self.mes.can_complete()
+            if not ok:
+                return {"ok": False, "reason": reason}
         snap = self.last_snapshot
         if snap is None or snap.status is not Status.PASS or not snap.stable:
             return {"ok": False, "reason": "PASS 확정 상태에서만 완료할 수 있습니다",
@@ -103,6 +121,8 @@ class Pipeline:
         self._thread.start()
 
     def stop(self) -> None:
+        if self._stop.is_set():                     # 두 번 불려도(서버 종료 + 테스트 정리) 같은 제품을 두 번 닫지 않게
+            return
         self._stop.set()
         self._thread.join(timeout=3)
         if self.product_id is not None:
@@ -121,7 +141,7 @@ class Pipeline:
             except queue.Empty:
                 return
             if cmd == "recipe":
-                self.recipe = load_recipe(self.recipe_dir / self.recipes[arg]["file"])
+                self.recipe = load_recipe(self.recipes[arg]["path"])
                 if self.product_id is not None:
                     self.store.close_product(self.product_id, ts, result="ABANDONED")
                 self.service.reset(self.recipe); self.source.reset(self.recipe); self._new_product(ts)
@@ -129,10 +149,22 @@ class Pipeline:
                 if self.product_id is not None:
                     self.store.close_product(self.product_id, ts, result="ABANDONED")
                 self.service.reset(); self.source.reset(self.recipe); self._new_product(ts)
+            elif cmd == "workorder":                   # MES 작업지시 적용(dict) / 취소(None). 열린 제품은 중단 처리
+                if self.product_id is not None:
+                    self.store.close_product(self.product_id, ts, result="ABANDONED")
+                if arg is not None:
+                    self.refresh_recipes()
+                    self.recipe = load_recipe(self.recipes[arg["recipe_id"]]["path"])
+                    self.service.reset(self.recipe)
+                else:
+                    self.service.reset()
+                self.source.reset(self.recipe); self._new_product(ts)
             elif cmd == "complete":
                 done, box = arg
                 try:
                     summary = self.store.close_product(self.product_id, ts, result="COMPLETED")
+                    if self.mes is not None:           # 수량 +1, result 를 outbox 로 (보내기는 mes 스레드가)
+                        self.mes.product_completed(summary, self.store.ng_codes(self.product_id))
                     box.update({"ok": True, "product": summary})
                     self.service.reset(); self.source.reset(self.recipe); self._new_product(ts)
                 except Exception as error:               # 화면에 이유를 돌려준다. 루프는 죽지 않는다.
@@ -195,7 +227,8 @@ class Pipeline:
             "mother_angle_deg": angle,
             "calibration_status": snapshot.calibration_status,
             "source_error": getattr(self.source, "last_error", None),     # 카메라·모델 쪽 마지막 오류 (없으면 null)
-            "video_at_end": bool(getattr(self.source, "at_end", False)),  # --video: 영상이 끝나 마지막 장면을 유지 중
+            "video_at_end": bool(getattr(self.source, "at_end", False)),
+            "mes": self.mes.view() if self.mes is not None else None,   # 작업지시 · 브로커 연결 · 못 보낸 건수  # --video: 영상이 끝나 마지막 장면을 유지 중
             "timing": {"gap_ms": gap, "total_ms": round(total_ms, 1), "fps": round(fps, 1),
                        "infer_ms": getattr(self.source, "infer_ms", None),          # 카메라 모드: 마지막 추론 시간
                        "result_age_ms": getattr(self.source, "result_age_ms", None),  # 화면에 붙은 판정이 몇 ms 전 것인지

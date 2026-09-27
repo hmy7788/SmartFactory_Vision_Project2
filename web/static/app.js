@@ -72,7 +72,7 @@ function human(i) {
 //   GEOM_KEEP_MS   보류 중 영상 위 H 링을 마지막 위치에 이 시간까지 유지 (손이 지나갈 때 링이 사라졌다 나타나지 않게. 더 길면 Mother 가 움직였을 수 있어 지운다)
 //   HOLD_HINT_MS   작업자가 고쳐야 하는 보류(Mother 기울어짐·두 개·안 보임·카메라) 가 이 시간 넘게 이어질 때만 판정 카드 맨 아래에 한 줄 안내
 const UI = { MAT_WINDOW_MS: 700, GEOM_KEEP_MS: 1500, HOLD_HINT_MS: 3000 };
-const UI_VERSION = "화면 0928m";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
+const UI_VERSION = "화면 0928 · MES";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
 const S = { view: "work", p: null, prev: null, rings: null, obs: null, geom: null, shown: null, matHist: [], matView: null, holdSince: null, holdHint: null,
             candKey: null, candSince: null, keys: {},
             sub: "live", period: 7, events: [], hist: null, sel: null, ana: null, diag: null, recipes: null };
@@ -189,10 +189,10 @@ function workKeys(p) {
   const mat = p.phase === "CHECK_MATERIALS", d = mat ? matDiff(p) : null, hold = p.candidate.status === "HOLD";
   return {
     frame: JSON.stringify([p.has_video, p.frame_size]),
-    header: JSON.stringify([p.phase, p.recipe?.recipe_id, p.recipes]),
+    header: JSON.stringify([p.phase, p.recipe?.recipe_id, p.recipes, p.mes && [p.mes.connected, p.mes.pending > 0, p.mes.work_order]]),
     note: JSON.stringify([p.video_at_end]),
     table: JSON.stringify([p.phase, p.recipe?.recipe_id, mat ? [d.e, d.o] : [S.rings, S.obs]]),
-    verdict: JSON.stringify([p.phase, p.recipe?.recipe_id, p.video_at_end, S.shown?.status === "PASS" && hold, S.holdHint,
+    verdict: JSON.stringify([p.phase, p.recipe?.recipe_id, p.video_at_end, p.mes && p.mes.work_order, S.shown?.status === "PASS" && hold, S.holdHint,
       S.shown && [S.shown.status, S.shown.issues], S.rings, d && [d.remove, d.add, d.o]]),
   };
 }
@@ -225,15 +225,21 @@ function render(shapeSame) {
 function renderHeaderWork(p) {
   const recipes = p?.recipes || [], cur = p?.recipe?.recipe_id || "";
   const phase = p?.phase || "CHECK_MATERIALS";
+  const mes = p?.mes, wo = mes?.work_order;
+  // MES 연동이면 레시피를 고르는 드롭다운 대신 작업지시 줄 (레시피·수량은 MES 가 정한다)
+  const left = mes
+    ? `<div class="wo ${mes.connected ? "on" : "off"}" title="${mes.connected ? `MES 연결됨 · ${esc(mes.broker)}` : `MES 연결 끊김 — 결과는 모아 뒀다가 다시 연결되면 보냅니다 (${mes.pending}건 대기)`}">
+         <i class="dot"></i><span class="k">작업지시</span>${wo ? `<b>${esc(wo.work_order_id)}</b><span class="k">${esc(wo.recipe_id)} v${wo.recipe_version}</span><b>${wo.done}/${wo.quantity}</b>` : `<span class="k">없음</span>`}</div>`
+    : `<div class="recipe-sel"><span>레시피</span><select id="recipe-select">${recipes.map((r) => `<option ${r === cur ? "selected" : ""}>${r}</option>`).join("")}</select></div>`;
   hmid.innerHTML = `
-    <div class="recipe-sel"><span>레시피</span><select id="recipe-select">${recipes.map((r) => `<option ${r === cur ? "selected" : ""}>${r}</option>`).join("")}</select></div>
+    ${left}
     <div class="stepper">
       <div class="${phase === "CHECK_MATERIALS" ? "on" : "done"}"><span class="dot">${phase === "CHECK_MATERIALS" ? "1" : "✓"}</span>재료 확인</div>
       <span class="bar"></span>
       <div class="${phase === "ASSEMBLING" ? "on" : ""}"><span class="dot">2</span>조립</div>
     </div>`;
   hright.innerHTML = `<button class="hbtn" id="btn-reset">↺ 새 작업</button>`;
-  $("#recipe-select").onchange = (e) => post(`/api/recipe/${e.target.value}`);
+  const sel = $("#recipe-select"); if (sel) sel.onchange = (e) => post(`/api/recipe/${e.target.value}`);
   $("#btn-reset").onclick = () => post("/api/reset");
 }
 function renderHeaderPeriod() {
@@ -308,7 +314,13 @@ function tableHoles(p) {
 function verdictCard(p) {
   const mat = p.phase === "CHECK_MATERIALS", shown = S.shown, holdNow = p.candidate.status === "HOLD";
   let big = "", sub = "", body = "", hint = "", cls = "IN_PROGRESS", locked = false;
-  if (mat) {
+  const wo = p.mes?.work_order;
+  if (p.mes && (!wo || wo.status !== "IN_PROGRESS")) {       // MES 연동: 진행 중인 작업지시가 없으면 대기
+    cls = "WAIT";
+    if (wo?.status === "COMPLETED") { big = "작업지시 완료"; sub = `${wo.work_order_id} · ${wo.recipe_id} · ${wo.done}/${wo.quantity}`; }
+    else { big = "대기"; sub = wo?.status === "CANCELLED" ? `${wo.work_order_id} 취소됨` : "작업지시를 기다리는 중"; }
+    hint = "MES 에서 다음 작업지시가 오면 자동으로 시작합니다. 누를 것 없습니다.";
+  } else if (mat) {
     const { e, o, remove, add } = matDiff(p), n = (c) => Math.abs((o[c] ?? 0) - (e[c] ?? 0));
     if (!remove.length && !add.length) {
       cls = "READY"; big = "준비 완료"; sub = "재료가 맞습니다 — 그대로 두세요";
@@ -550,13 +562,13 @@ function viewRecipe() {
     const pl = {}; rc.placements.forEach((p) => (pl[p.mother_hole] = p));
     const need = { mother_part: 1 }; rc.placements.forEach((p) => { need[p.bolt] = (need[p.bolt] || 0) + 1; need[p.part] = (need[p.part] || 0) + 1; });
     const s = stats[rc.recipe_id], med = s?.cyc.length ? [...s.cyc].sort((a, b) => a - b)[Math.floor(s.cyc.length / 2)] : null;
-    const on = rc.recipe_id === r.current;
-    return `<div class="card rcard"><h3 class="mono">${rc.recipe_id}<span class="note">${on ? chip("ok", "사용 중") : ""}</span></h3>
+    const on = rc.recipe_id === r.current, mesMode = !!S.p?.mes;
+    return `<div class="card rcard"><h3 class="mono">${rc.recipe_id}<span class="note">${rc.source === "MES" ? chip("wait", `MES v${rc.version}`) : ""}${on ? chip("ok", "사용 중") : ""}</span></h3>
       <div class="art">${recipeArt(pl)}</div>
       <div class="spec">${[1, 2, 3, 4, 5].map((h) => `<b>H${h}</b><span>${pl[h] ? bolt(pl[h].bolt) + part(pl[h].part) : '<span style="color:var(--muted)">비워 둠 — 무엇이든 꽂히면 NG</span>'}</span><span class="code">${pl[h] ? pl[h].bolt + " · " + pl[h].part : ""}</span>`).join("")}</div>
       <div class="note">재료 확인에서 세는 수량: ${Object.entries(need).map(([c, n]) => `${SHORT[c]}×${n}`).join(" · ")}</div>
       <div class="stats"><div><div class="l">${S.period}일 완료</div><div class="v">${s ? s.n + "대" : "—"}</div></div><div><div class="l">첫 시도 통과</div><div class="v">${s ? (100 * s.fp / s.n).toFixed(1) + "%" : "—"}</div></div><div><div class="l">중앙 사이클</div><div class="v">${med != null ? (med / 1000).toFixed(0) + "초" : "—"}</div></div></div>
-      <button class="use ${on ? "on" : ""}" data-r="${rc.recipe_id}" ${on ? "disabled" : ""}>${on ? "사용 중" : "이 레시피로 새 작업"}</button></div>`;
+      <button class="use ${on ? "on" : ""}" data-r="${rc.recipe_id}" ${on || mesMode ? "disabled" : ""}>${on ? "사용 중" : mesMode ? "MES 작업지시로만 바뀝니다" : "이 레시피로 새 작업"}</button></div>`;
   }).join("")}
   <div class="card" style="grid-column:1/-1"><h3>레시피가 바뀌면</h3><div style="line-height:1.9">
     · 파일만 고치면 됩니다. 모델·코드는 그대로 — 판정은 레시피 테이블과 대조해서 나옵니다 (NFR-008).<br>

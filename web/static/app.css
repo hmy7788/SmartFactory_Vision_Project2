@@ -104,6 +104,13 @@ table.t tr.click { cursor: pointer; }
 .verdict.IN_PROGRESS, .verdict.READY { background: var(--wait-bg); border-color: var(--wait); color: var(--wait); }
 /* 보류는 작업 화면에 없다 (0927c). 코어가 보류 중이면 [작업 완료] 만 잠기고(.bigbtn:disabled), 고칠 게 있으면 맨 아래 한 줄 */
 .verdict .hint .act { color: var(--ink); font-weight: 700; }
+/* MES 연동 (0927c · MES): 헤더의 작업지시 줄과 대기 카드 */
+.wo { display: flex; align-items: center; gap: 10px; background: #0E1F4D; border: 1px solid #4A63A8; border-radius: 8px; padding: 8px 14px; font-size: 17px; }
+.wo .k { color: #8FA3CE; font-size: 15px; }
+.wo b { font-family: ui-monospace, Consolas, monospace; font-size: 18px; }
+.wo .dot { width: 10px; height: 10px; border-radius: 50%; background: #5FD38D; display: inline-block; }
+.wo.off .dot { background: #E5484D; }
+.verdict.WAIT { background: #F4F6FA; border-color: var(--skip); color: #4A5568; }
 #sidebar .ver { color: #5F74A8; font-size: 11px; margin-bottom: 10px; text-align: center; white-space: pre-line; word-break: break-all; padding: 0 4px; }
 .verdict.READY { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
 /* 확정까지 남은 시간 막대 (재료 READY 1초). 코어가 세는 시간을 보여 줄 뿐, 화면이 판정하지 않는다 */

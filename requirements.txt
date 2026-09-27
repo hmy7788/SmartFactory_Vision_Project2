@@ -7,3 +7,4 @@ numpy>=2.0
 fastapi>=0.141       # 웹 UI 백엔드
 uvicorn[standard]>=0.53
 pytest
+paho-mqtt>=2.0         # MES 연동 (--mes-broker) 때만 필요. docs/mes_mqtt.md

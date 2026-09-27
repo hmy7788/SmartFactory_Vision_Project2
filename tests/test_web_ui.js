@@ -209,5 +209,20 @@ scenario("hole table relabels observed by mother_hole when mirrored (180-degree 
   check("지금 column shows H1's content read from physical hole 5", text().includes("노란 볼트 + 2구 파트"), text().slice(0, 300));
 });
 
+// 10. MES 연동: 작업지시가 없으면 '대기', 있으면 헤더에 작업지시 줄(드롭다운 없음), 수량을 채우면 '작업지시 완료'
+scenario("MES work order drives the header and waiting card", () => {
+  const mes = (wo, connected = true) => ({ mes: { enabled: true, connected, station_id: "VIS-01", broker: "localhost:1883", pending: 0, work_order: wo } });
+  const WO = { work_order_id: "WO-7", recipe_id: "recipe_1", recipe_version: 3, quantity: 10, done: 3, status: "IN_PROGRESS" };
+  feed({ candidate: IN_PROGRESS, confirmed: IN_PROGRESS, stable: true, extra: mes(null) });
+  check("no work order → 대기", text().includes("대기") && text().includes("작업지시를 기다리는 중") && !html().includes("btn-complete"), text().slice(0, 200));
+  check("header: no recipe dropdown", !hmid._html.includes("recipe-select") && hmid._html.includes("작업지시"), hmid._html);
+  feed({ candidate: IN_PROGRESS, confirmed: IN_PROGRESS, stable: true, extra: mes(WO) });
+  check("active → normal card + WO line", text().includes("조립 중") && hmid._html.includes("WO-7") && hmid._html.includes("3/10") && hmid._html.includes("v3"), hmid._html);
+  feed({ candidate: IN_PROGRESS, confirmed: IN_PROGRESS, stable: true, extra: mes(WO, false) });
+  check("broker down → red dot only, card unchanged", hmid._html.includes('class="wo off"') && text().includes("조립 중"));
+  feed({ candidate: IN_PROGRESS, confirmed: IN_PROGRESS, stable: true, extra: mes({ ...WO, done: 10, status: "COMPLETED" }) });
+  check("completed → 작업지시 완료 10/10", text().includes("작업지시 완료") && text().includes("10/10"), text().slice(0, 200));
+});
+
 console.log(`\n${passed} checks passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

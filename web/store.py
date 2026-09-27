@@ -180,6 +180,16 @@ class Store:
                 {**summary, "pid": product_id})
         return {"product_id": product_id, **summary}
 
+    def ng_codes(self, product_id: int) -> list[str]:
+        """그 제품에서 확정됐던 NG 의 원인 코드 ("WRONG_BOLT:H1") — MES 로 보내는 재작업 이력."""
+        codes = set()
+        for row in self._rows("SELECT issues_json FROM events WHERE product_id=? AND status='NG'", (product_id,)):
+            for issue in json.loads(row["issues_json"] or "[]"):
+                code = issue.get("code", "")
+                if code and not code.startswith("MISSING"):
+                    codes.add(f"{code}:H{issue['hole_id']}" if issue.get("hole_id") else code)
+        return sorted(codes)
+
     # ── events ──────────────────────────────────────────────
     def record(self, product_id: int, snapshot, *, mother_angle_deg: float | None = None,
                latency_ms: int | None = None, frame_path: str | None = None,

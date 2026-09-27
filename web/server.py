@@ -128,6 +128,8 @@ def create_app(pipeline: Pipeline, store: Store, hub: Hub) -> Starlette:
             pipeline.select_recipe(rid)
         except KeyError:
             return JSONResponse({"ok": False, "reason": f"unknown recipe {rid}"}, 404)
+        except PermissionError as error:             # MES 연동 중 — 레시피는 작업지시가 정한다
+            return JSONResponse({"ok": False, "reason": str(error)}, 409)
         return JSONResponse({"ok": True, "recipe_id": rid})
 
     async def reset(request):
@@ -168,6 +170,8 @@ def create_app(pipeline: Pipeline, store: Store, hub: Hub) -> Starlette:
         hub.loop = asyncio.get_running_loop()
         yield
         pipeline.stop()
+        if pipeline.mes is not None:
+            pipeline.mes.stop()
 
     return Starlette(lifespan=lifespan, routes=[
         Route("/", index),
@@ -237,8 +241,21 @@ def build(args, preloaded=None) -> tuple[Starlette, Pipeline, Store, Hub]:
                                                     model_type=args.model_type, flip_horizontal=args.flip_horizontal,
                                                     flip_vertical=args.flip_vertical)
         model = weights or ("rule_based" if is_rule_based else "camera-only")
-    pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
+    recipe_dirs, recipe, link = [ROOT / args.recipe_dir], args.recipe, None
+    if getattr(args, "mes_broker", None):            # MES 연동: 작업지시가 레시피·수량을 정한다 (docs/mes_mqtt.md)
+        from web.mes_link import MesLink, PahoTransport, parse_broker
+        host, port = parse_broker(args.mes_broker)
+        mes_dir = ROOT / args.mes_dir
+        link = MesLink(args.station, mes_dir / "recipes", mes_dir / "mes_link.db", transport=PahoTransport(host, port),
+                       prefix=args.mes_prefix, broker=f"{host}:{port}")
+        recipe_dirs.append(mes_dir / "recipes")
+        wo = link.work_order                         # 재시작: 진행 중이던 작업지시의 레시피로 시작
+        if wo and wo["status"] == "IN_PROGRESS" and (mes_dir / "recipes" / f"{wo['recipe_id']}.json").exists():
+            recipe = wo["recipe_id"]
+    pipeline = Pipeline(config, recipe_dirs, store, factory, recipe, hub.publish, model_file=model)
     pipeline.model_label = model_label if args.source == "camera" else model   # 진단 탭 · 사이드바에 보이는 모델 이름
+    if link is not None:
+        pipeline.attach_mes(link)
     return create_app(pipeline, store, hub), pipeline, store, hub
 
 
@@ -273,6 +290,10 @@ def parse(argv=None):
     p.add_argument("--no-model", action="store_true", help="가중치 없이 카메라 영상만 (구도·해상도 확인용). 판정은 전부 보류")
     p.add_argument("--fps", type=float, default=10.0)
     p.add_argument("--speed", type=float, default=1.0, help="데모 시나리오 배속 (안정화 창도 같이 나눔, demo 전용)")
+    p.add_argument("--mes-broker", default=None, help="MES 연동: MQTT 브로커 주소 (예: localhost:1883). 없으면 연동 없이 지금처럼")
+    p.add_argument("--station", default="VIS-01", help="이 검사대의 설비 ID — 토픽 factory/<station>/…")
+    p.add_argument("--mes-prefix", default="factory", help="MQTT 토픽 앞부분")
+    p.add_argument("--mes-dir", default="data/mes", help="MES 가 내려준 레시피·보낼 목록(outbox) 을 두는 곳")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8000)
     args = p.parse_args(argv)
@@ -285,6 +306,9 @@ def serve(args, preloaded=None):
     import uvicorn
     app, pipeline, store, hub = build(args, preloaded)
     pipeline.start()
+    if pipeline.mes is not None:
+        pipeline.mes.start()
+        print(f"MES 연동: 브로커 {pipeline.mes.broker} · 설비 {pipeline.mes.station_id} · 토픽 {pipeline.mes.topic('#')}", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
