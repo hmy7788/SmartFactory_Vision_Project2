@@ -54,7 +54,7 @@ DB 는 `data/pokayoke.db` 에 생긴다 (`--db` 로 바꿈). 저장 규칙은 [s
 | `candidate{status,issues}`, `confirmed` | Snapshot | 후보(매 프레임) / 확정(안정화 뒤). 작업 화면은 `status`(=확정) 를, 진단은 둘 다 |
 | `materials{expected,observed}` | Snapshot | 재료 단계 수량 |
 | `observed{H1..H5:{bolt:[],part:[]}}` | Snapshot | 자리별로 붙은 검출 |
-| `geometry{pose,holes,bolt_rois,part_rois}` | Snapshot | Mother-local 기하. HOLD(각도 초과·Mother 없음) 면 `{}` |
+| `geometry{pose,holes,bolt_rois,part_rois,part_rois_down}` | Snapshot | Mother-local 기하 (`part_rois` 위쪽, `part_rois_down` 아래쪽 거울). HOLD(각도 초과·Mother 없음) 면 `{}` |
 | `detections[]` | 원본 프레임 | 클래스·confidence·OBB. Snapshot 에는 없어서 파이프라인이 보탠다 (진단용) |
 | `mother_angle_deg` | 파이프라인 | HOLD 때도 각도를 보여 주려고 `major_axis()` 를 한 번 더 부른다 |
 | `events[]` | Store 기록 | 최근 12개 변화 이벤트 (`STATUS_CHANGED`, `ASSEMBLY_STARTED`, …) |

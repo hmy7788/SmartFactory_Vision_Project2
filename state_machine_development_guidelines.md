@@ -8,6 +8,7 @@
 
 - Hole은 화면 왼쪽부터 H1~H5. Mother 수평 ±15° 기본 제한. 물리적 360° 번호 추적 제외.
 - Part ROI도 Mother 회전을 따른다(후속 사용자 확정). 중심 offset과 사각형을 Mother-local 위쪽(-v) 기준으로 회전시키며 Part 방향 검증도 Mother에 상대적으로 수행한다. 수평일 때는 기존 화면 위쪽과 같다. 아래 초기 문서의 화면 위쪽 고정 설명은 이 규칙으로 대체한다.
+- (2026-09-27 추가) Part 는 Mother 아래쪽(+v)으로 뻗어도 정상이다. `build_geometry` 가 위·아래 두 벌의 Part ROI(`part_rois`, `part_rois_down`)를 만들고, `associate` 가 Part 중심이 놓인 쪽의 ROI 를 쓰며 앵커(Mother 쪽 끝) 탐색 방향도 그쪽으로 잡는다. 실제 조립(팀 시연 영상)이 아래쪽 배치라 위쪽만 허용하던 규칙은 "불명확" 보류를 냈다. 자리 번호(H1~H5, 화면 왼쪽부터)·레시피·각도 규칙은 그대로.
 - 3종 Recipe는 순서 없이 전체 조합 검사. `placements` JSON으로 관리하며 Step 전이/순서 오류 제외.
 - 비지정 Hole 및 H5의 추가 조립은 NG. Mother와 무관한 예비 부품은 제외.
 - 버튼 없이 실행. 부족하면 IN_PROGRESS, 오류면 NG, 모두 맞으면 PASS, 불명확하면 HOLD.

@@ -50,7 +50,7 @@ python -m scripts.verify_materials --recipe recipe_1
 | recipe_2 | H1/H3 각각 bolt_1+part_2hole |
 | recipe_3 | H2 bolt_2+part_3hole |
 
-준비 수량은 Mother 1개와 위 조합에서 산출한다. Hole 번호는 화면 왼쪽부터 H1~H5. Mother 수평 ±15° 범위에서 검사하고 Bolt/Part ROI 모두 함께 회전한다. Part는 Mother-local 위쪽(-v)에 놓인다. 물리적 360° 번호 추적은 지원하지 않는다. H5/비지정 Hole 추가 조립은 NG, 부족은 조립 중이다. 조립 판정 안정화는 400ms이며 PASS 후에도 재검사한다.
+준비 수량은 Mother 1개와 위 조합에서 산출한다. Hole 번호는 화면 왼쪽부터 H1~H5. Mother 수평 ±15° 범위에서 검사하고 Bolt/Part ROI 모두 함께 회전한다. Part는 Mother-local 위쪽(-v)·아래쪽(+v) 어느 쪽으로 뻗어도 되며, 자리는 Part 의 Mother 쪽 끝이 붙은 구멍으로 정한다 (2026-09-27: 아래쪽 허용 — 이전에는 위쪽만). 물리적 360° 번호 추적은 지원하지 않는다. H5/비지정 Hole 추가 조립은 NG, 부족은 조립 중이다. 조립 판정 안정화는 400ms이며 PASS 후에도 재검사한다.
 
 ## 인수인계
 

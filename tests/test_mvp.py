@@ -9,7 +9,7 @@ from src.app.inspection_service import InspectionService
 from src.contracts.detections import DetectionFrame, OBBDetection
 from src.contracts.inspection import Status
 from src.geometry.mother_frame import mother_pose, major_axis
-from src.geometry.roi_builder import build_geometry
+from src.geometry.roi_builder import build_geometry, part_side
 from src.geometry.spatial import rectangle, area, intersection, contains
 from src.process.recipe import load_recipe, Recipe, Placement
 from scripts.demo_data import mother, components
@@ -166,6 +166,61 @@ class MVPTests(unittest.TestCase):
         self.assertAlmostEqual(center[0],300+90*sin(angle))
         self.assertAlmostEqual(center[1],350-90*cos(angle))
         self.assertLess(sum(p[1] for p in roi)/4,geo["holes"][3][1])
+
+    def mirrored_below(self, detections):
+        """파트를 Mother 아래쪽(+v)으로 뒤집어 놓는다 — 볼트·Mother 는 그대로."""
+        out = []
+        for d in detections:
+            if d.class_name.startswith("part_"):
+                d = replace(d, center_xy=(d.center_xy[0], 700 + (700 - d.center_xy[1])))
+            out.append(d)
+        return out
+
+    def test_part_side(self):
+        geo = build_geometry(mother_pose(mother(), self.config), self.config)
+        up = next(d for d in self.correct() if d.class_name.startswith("part_"))
+        self.assertEqual(part_side(up, geo["pose"]), -1)
+        self.assertEqual(part_side(replace(up, center_xy=(up.center_xy[0], 700 + 150)), geo["pose"]), 1)
+        # 아래쪽 ROI 는 위쪽 ROI 를 Mother 축에 대해 거울처럼 뒤집은 것
+        for h in range(1, 6):
+            for name in ("part_2hole", "part_3hole"):
+                a = geo["part_rois"][h][name]; b = geo["part_rois_down"][h][name]
+                ca = sum(p[1] for p in a) / 4; cb = sum(p[1] for p in b) / 4
+                self.assertAlmostEqual((ca + cb) / 2, geo["holes"][h][1])
+                self.assertAlmostEqual(sum(p[0] for p in a) / 4, sum(p[0] for p in b) / 4)
+
+    def test_parts_below_mother_pass(self):
+        """파트가 Mother 아래쪽으로 뻗어도 정상 조립이다 (팀원 시연 영상의 배치)."""
+        for name in ("recipe_1", "recipe_2", "recipe_3"):
+            self.recipe = load_recipe(ROOT/f"config/recipes/{name}.json")
+            self.service.reset(self.recipe)
+            self.prepare()
+            result = self.stable(self.mirrored_below(self.correct()))
+            self.assertEqual(result.status, Status.PASS, name)
+            for slots in result.observed.values():
+                for part in slots["part"]:
+                    self.assertAlmostEqual(part["overlap"], 1.0)
+
+    def test_mixed_sides_pass_and_wrong_part_below_is_ng(self):
+        ds = self.correct()
+        i = next(k for k, d in enumerate(ds) if d.class_name.startswith("part_"))
+        ds[i] = replace(ds[i], center_xy=(ds[i].center_xy[0], 700 + (700 - ds[i].center_xy[1])))   # 한 자리만 아래로
+        self.assertEqual(self.stable(ds).status, Status.PASS)
+        wrong = "part_3hole" if ds[i].class_name == "part_2hole" else "part_2hole"
+        ds[i] = replace(ds[i], class_name=wrong)
+        result = self.stable(ds)
+        self.assertEqual(result.status, Status.NG)
+        self.assertIn("WRONG_PART", [c.code for c in result.candidate.issues])
+
+    def test_loose_part_far_below_is_ignored(self):
+        """Mother 아래 멀리 떨어진 파트는 (위쪽과 똑같이) 자리에 붙지 않고 무시된다."""
+        ds = self.correct()
+        i = next(k for k, d in enumerate(ds) if d.class_name.startswith("part_"))
+        ds[i] = replace(ds[i], center_xy=(ds[i].center_xy[0], 700 + 700))
+        result = self.stable(ds)
+        self.assertEqual(result.status, Status.IN_PROGRESS)                         # 그 자리는 파트가 빠진 것으로
+        self.assertIn(ds[i].detection_id, result.geometry["ignored_detections"])
+        self.assertNotIn("AMBIGUOUS_ASSOCIATION", [c.code for c in result.candidate.issues])
 
     def test_angle_limit(self):
         ds = replace(mother(), angle_rad=16*pi/180)

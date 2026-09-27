@@ -31,9 +31,10 @@ def draw_overlay(source, records, geometry, message, part_type, destination):
         p = geometry["pose"]
         poly = rectangle(p["center"], p["width"], p["height"], p["angle_rad"])
         draw.line(list(poly)+[poly[0]], fill="#38ff79", width=3)
-        for hole, rois in geometry["part_rois"].items():
-            poly = rois[part_type]
-            draw.line(list(poly)+[poly[0]], fill="#44cfff" if part_type == "part_2hole" else "#ef83ff", width=3)
+        for key, width in (("part_rois", 3), ("part_rois_down", 1)):      # 위쪽 굵게, 아래쪽(거울) 가늘게
+            for hole, rois in geometry.get(key, {}).items():
+                poly = rois[part_type]
+                draw.line(list(poly)+[poly[0]], fill="#44cfff" if part_type == "part_2hole" else "#ef83ff", width=width)
         for hole, poly in geometry["bolt_rois"].items():
             draw.line(list(poly)+[poly[0]], fill="#ffca28", width=3)
             x,y = geometry["holes"][hole]

@@ -257,7 +257,9 @@ function drawOverlay(p, diag) {
   if (diag) {  // Bolt / Part ROI (코드가 계산한 polygon 그대로)
     ctx.lineWidth = 2;
     for (const [h, poly] of Object.entries(g.bolt_rois || {})) polygon(ctx, poly, "#FFD166");
-    for (const [h, byCls] of Object.entries(g.part_rois || {})) { const pl = (p.recipe.placements || []).find((x) => String(x.mother_hole) === h); if (pl) polygon(ctx, byCls[pl.part], pl.part === "part_2hole" ? "#7FE0FF" : "#FF9BD0", [6, 5]); }
+    // 파트 ROI 는 Mother 위·아래 양쪽 (어느 쪽으로 뻗어도 정상 조립) — 아래쪽은 점선을 더 성기게
+    for (const [key, dash] of [["part_rois", [6, 5]], ["part_rois_down", [3, 7]]])
+      for (const [h, byCls] of Object.entries(g[key] || {})) { const pl = (p.recipe.placements || []).find((x) => String(x.mother_hole) === h); if (pl) polygon(ctx, byCls[pl.part], pl.part === "part_2hole" ? "#7FE0FF" : "#FF9BD0", dash); }
     ctx.lineWidth = 3;
   }
   const rings = S.rings || holeStates(p);

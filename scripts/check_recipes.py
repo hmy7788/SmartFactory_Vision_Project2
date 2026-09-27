@@ -61,20 +61,22 @@ def bolt(config, hole, cls):
     return (cls, hole_x(config, hole), MOTHER[1], 80.0, 80.0, 0.0, 0.92)
 
 
-def part(config, hole, cls, tilt_deg=0.0):
+def part(config, hole, cls, tilt_deg=0.0, side=-1):
+    """side=-1: Mother 위쪽(화면 위)으로 뻗음, +1: 아래쪽으로 뻗음 — 둘 다 정상 조립이다"""
     length = PART_LEN[cls]
     x = hole_x(config, hole)
-    return (cls, x, MOTHER[1] - length / 2 + 40, length, 90.0, pi / 2 + tilt_deg * pi / 180, 0.90)
+    return (cls, x, MOTHER[1] + side * (length / 2 - 40), length, 90.0, pi / 2 + tilt_deg * pi / 180, 0.90)
 
 
-def placed(config, recipe, skip=(), swap_bolt=None, swap_part=None, tilt=None):
-    """레시피대로 꽂은 장면. skip=빼먹을 자리, swap_bolt/part={자리: 다른종류}, tilt={자리: 각도}"""
+def placed(config, recipe, skip=(), swap_bolt=None, swap_part=None, tilt=None, side=None):
+    """레시피대로 꽂은 장면. skip=빼먹을 자리, swap_bolt/part={자리: 다른종류}, tilt={자리: 각도}, side={자리: ±1} 또는 ±1 전부"""
     out = []
     for p in recipe.placements:
         if p.mother_hole in skip:
             continue
+        sd = side if isinstance(side, int) else (side or {}).get(p.mother_hole, -1)
         out.append(bolt(config, p.mother_hole, (swap_bolt or {}).get(p.mother_hole, p.bolt)))
-        out.append(part(config, p.mother_hole, (swap_part or {}).get(p.mother_hole, p.part), (tilt or {}).get(p.mother_hole, 0.0)))
+        out.append(part(config, p.mother_hole, (swap_part or {}).get(p.mother_hole, p.part), (tilt or {}).get(p.mother_hole, 0.0), sd))
     return out
 
 
@@ -148,8 +150,14 @@ def cases(config, recipe):
         (f"H{first.mother_hole} 파트 25° 비뚤게", "조립", placed(config, recipe, tilt={first.mother_hole: 25}), "NG", f"PART_ORIENTATION_ERROR:H{first.mother_hole}"),
         (f"H{first.mother_hole} 에 볼트 2개",   "조립", placed(config, recipe) + [bolt(config, first.mother_hole, first.bolt)], "NG", f"EXTRA_COMPONENT:H{first.mother_hole}"),
     ]
+    rows += [
+        ("전부 꽂음 — 파트가 아래쪽으로", "조립", placed(config, recipe, side=+1),             "PASS",        "—"),
+        (f"H{first.mother_hole} 파트 종류 틀림 (아래쪽)", "조립", placed(config, recipe, side=+1, swap_part={first.mother_hole: wrong_part}), "NG", f"WRONG_PART:H{first.mother_hole}"),
+        (f"H{first.mother_hole} 파트 25° 비뚤게 (아래쪽)", "조립", placed(config, recipe, side=+1, tilt={first.mother_hole: 25}), "NG", f"PART_ORIENTATION_ERROR:H{first.mother_hole}"),
+    ]
     if other:
         rows.append((f"H{other.mother_hole} 만 빠뜨림", "조립", placed(config, recipe, skip=(other.mother_hole,)), "IN_PROGRESS", f"MISSING_BOLT:H{other.mother_hole}"))
+        rows.append(("위·아래 섞어 꽂음",            "조립", placed(config, recipe, side={first.mother_hole: -1, other.mother_hole: +1}), "PASS", "—"))
     rows += [
         ("Mother 26° 기울임",         "조립", "TILT",                                       "HOLD",        "MOTHER_ANGLE_OUT_OF_RANGE"),
         ("NG 였다가 바로잡음",          "조립", "FIX",                                        "PASS",        "—"),

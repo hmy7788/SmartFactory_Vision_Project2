@@ -1,5 +1,6 @@
 from math import cos, sin, degrees, hypot, pi
 from .mother_frame import major_axis
+from .roi_builder import part_side
 from .spatial import contains, overlap, rectangle, area, intersection
 
 
@@ -16,13 +17,17 @@ def associate(detections, geometry, config):
             matches = [h for h, roi in geometry["bolt_rois"].items() if contains(roi, d.center_xy)]
             scores = {h: 1.0 for h in matches}
         else:
-            scores = {h: overlap(d, rois[d.class_name]) for h, rois in geometry["part_rois"].items()}
-            # Part's lower end must be near the Mother anchor. Overlap alone
-            # cannot distinguish a loose component high above the Mother.
+            # A part may extend to either side of the Mother (it hangs on a bolt through a hole).
+            # Pick the ROI set by the side its centre is on, and point the anchor search toward the Mother.
+            side = part_side(d, geometry["pose"])
+            roi_set = geometry["part_rois_down"] if side > 0 else geometry["part_rois"]
+            scores = {h: overlap(d, rois[d.class_name]) for h, rois in roi_set.items()}
+            # The part's Mother-facing end must be near a hole. Overlap alone
+            # cannot distinguish a loose component lying further out on the same side.
             length, _, angle = major_axis(d)
             direction = (cos(angle), sin(angle))
-            mother_down = geometry["pose"]["v"]
-            if sum(direction[k]*mother_down[k] for k in (0, 1)) < 0:
+            toward_mother = tuple(-side * geometry["pose"]["v"][k] for k in (0, 1))
+            if sum(direction[k]*toward_mother[k] for k in (0, 1)) < 0:
                 direction = (-direction[0], -direction[1])
             spec = config["part_rois"][d.class_name]
             fraction = spec["offset_ratio"] / spec["length_ratio"]
