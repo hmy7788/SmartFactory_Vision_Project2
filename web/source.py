@@ -222,8 +222,16 @@ class CameraSource:
             else:
                 backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else cv2.CAP_ANY   # 윈도우: DSHOW 가 빨리·안정적으로 열린다
                 cap = cv2.VideoCapture(self.index, backend)
+                # MJPG 를 먼저 요청해야 한다: 윈도우 DSHOW 는 기본이 무압축(YUY2) 이라 C270 1280x720 이 7~15fps 로 떨어지는 일이 흔하다.
+                # 순서도 중요 — 코덱 → 해상도 → fps. 카메라가 MJPG 를 모르면 그냥 무시되고 예전처럼 열린다.
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_size[0])
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_size[1])
+                cap.set(cv2.CAP_PROP_FPS, 30)
+                code = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
+                fourcc = "".join(chr((code >> 8 * k) & 0xFF) for k in range(4)) if code else "?"
+                print(f"[camera {self.index}] {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))} "
+                      f"{cap.get(cv2.CAP_PROP_FPS):.0f}fps codec={fourcc}   (실제 처리 fps 는 진단 탭 'core+store 처리 / fps')", flush=True)
             self._capture = cap
         return self._capture
 
