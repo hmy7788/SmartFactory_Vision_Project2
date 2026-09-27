@@ -194,6 +194,7 @@ class Pipeline:
             "mother_angle_deg": angle,
             "calibration_status": snapshot.calibration_status,
             "source_error": getattr(self.source, "last_error", None),     # 카메라·모델 쪽 마지막 오류 (없으면 null)
+            "video_at_end": bool(getattr(self.source, "at_end", False)),  # --video: 영상이 끝나 마지막 장면을 유지 중
             "timing": {"gap_ms": gap, "total_ms": round(total_ms, 1), "fps": round(fps, 1),
                        "infer_ms": getattr(self.source, "infer_ms", None),          # 카메라 모드: 마지막 추론 시간
                        "result_age_ms": getattr(self.source, "result_age_ms", None),  # 화면에 붙은 판정이 몇 ms 전 것인지

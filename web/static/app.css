@@ -103,6 +103,17 @@ table.t tr.click { cursor: pointer; }
 .verdict.HOLD { background: var(--hold-bg); border-color: var(--hold); color: var(--hold); }
 .verdict.IN_PROGRESS, .verdict.READY { background: var(--wait-bg); border-color: var(--wait); color: var(--wait); }
 .verdict .stable { position: absolute; right: 24px; top: 20px; }
+/* HOLD 유예: 마지막 확정 판정을 흐리게 유지 — 손이 지나가는 1~2초 동안 카드가 통째로 바뀌지 않는다 */
+.verdict.dim > :not(.stable) { opacity: 0.45; transition: opacity 0.3s; }
+.verdict.dim .bigbtn { pointer-events: none; }     /* 보류 중엔 [작업 완료] 가 409 를 받으므로 눌리지 않게 */
+.verdict.dim .stable .chip { color: var(--hold); background: var(--hold-bg); font-weight: 700; }
+.verdict.READY { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+/* 확정까지 남은 시간 막대 (재료 READY 1초 · 조립 후보 0.4초). 코어가 세는 시간을 보여 줄 뿐, 화면이 판정하지 않는다 */
+.prog { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 24px; }
+.prog .cap { color: var(--muted); font-size: 17px; margin-bottom: 10px; }
+.prog .bar { height: 22px; border-radius: 11px; background: #EEF1F6; overflow: hidden; }
+.prog .bar i { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 11px; transition: width 0.12s linear; }
+.verdict.IN_PROGRESS .prog .bar i { background: var(--wait); }
 .verdict .big { font-size: 120px; font-weight: 800; line-height: 1; margin-top: 110px; letter-spacing: 2px; }
 .verdict .big.long { font-size: 84px; }
 .verdict .sub { font-size: 34px; font-weight: 700; margin-top: 22px; }

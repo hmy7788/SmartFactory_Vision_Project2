@@ -15,6 +15,8 @@ if not exist "%W%" goto :nopt
 echo Video:   %VID%
 echo Weights: %W%
 echo Browser: http://localhost:8000   (pick the recipe that matches the video in the top bar)   Stop: Ctrl+C
+echo Note:    use the ORIGINAL video, not the *_obb.mp4 with boxes drawn on it (the model cannot see parts through the boxes).
+echo          When the video ends the last frame stays on screen (PASS + [Complete]); [Complete] / [New job] replay it from the start.
 start "" http://localhost:8000
 %PY% -m web.server --video "%VID%" --weights "%W%" --imgsz 480
 goto :end

@@ -206,6 +206,32 @@ class CameraSourceTests(unittest.TestCase):
             self.assertGreater(elapsed, 14 / 20 * 0.8)             # 20fps 로 재생 (빨리 감기 아님)
             self.assertEqual(frames[-1].detections[0].class_name, "mother_part")
 
+    def test_video_end_hold_keeps_last_frame_and_reset_rewinds(self):
+        """--video-end hold (기본): 영상이 끝나면 마지막 장면을 계속 낸다 (PASS·[작업 완료] 가 남는다). reset → 처음부터."""
+        try:
+            import cv2
+        except ImportError:
+            self.skipTest("cv2 not installed")
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "assembly.avi")
+            vw = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), 50, (320, 240))
+            for i in range(6):
+                img = _img(320, 240); img[:, :, 1] = 40 * i; vw.write(img)
+            vw.release()
+            result = _Result(_Obb([[160, 120, 200, 40, 0.0]], [0], [0.95]))
+            src = CameraSource(video=path, model=_Model(result), mapping_path=self.mapping, threaded=False, video_end="hold")
+            gen = src.frames()
+            jpegs = [jpeg for _, jpeg in (next(gen) for _ in range(9))]         # 6장짜리 → 7~9번째는 마지막 장면
+            self.assertTrue(src.at_end)
+            self.assertEqual(jpegs[6], jpegs[5]); self.assertEqual(jpegs[8], jpegs[5])
+            self.assertNotEqual(jpegs[0], jpegs[5])
+            src.reset(None)                                                    # 새 작업·작업 완료 → 되감기
+            _, first_again = next(gen)
+            self.assertFalse(src.at_end)
+            self.assertEqual(first_again, jpegs[0])
+            src.close()
+
     def test_core_runs_on_camera_frames(self):
         """가짜 카메라 프레임이 코어까지 통과해 재료 판정을 낸다."""
         rows = [[600, 700, 1000, 160, 0.0], [120, 120, 80, 80, 0.0], [520, 120, 80, 80, 0.0],
@@ -331,6 +357,19 @@ class RecipeHotAddTests(unittest.TestCase):
             time.sleep(0.05)
         self.assertEqual(s["recipe"]["recipe_id"], "recipe_9")
         self.assertIn("recipe_9", s["recipes"])                                            # 헤더 드롭다운에도
+
+
+class UiLogicTests(unittest.TestCase):
+    """작업 화면(app.js) 의 파생 상태 — node 로 tests/test_web_ui.js 를 돌린다 (node 가 없으면 건너뜀)."""
+
+    def test_worker_screen_stays_calm(self):
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        run = subprocess.run([node, str(ROOT / "tests" / "test_web_ui.js")], capture_output=True, text=True, timeout=60)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
 
 if __name__ == "__main__":

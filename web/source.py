@@ -50,7 +50,7 @@ class DemoSource:
     """레시피에 맞춘 시나리오를 실시간 속도로 재생한다.
 
     재료 부족 → 재료 초과(NG) → 정확(READY→조립) → 빈 Mother → 첫 자리 조립 → 두 번째 자리 볼트 오조립(NG)
-    → 정정(PASS) → Mother 26° 기울임(HOLD) → 복귀(PASS) → [작업 완료] 를 누를 때까지 PASS 유지
+    → 정정(PASS) → Mother 26° 기울임 2.6초(HOLD — 화면은 1.5초 유예 뒤에야 보류로 바뀐다) → 복귀(PASS) → [작업 완료] 를 누를 때까지 PASS 유지
     """
     frame_size = (1200, 900)
     has_video = False
@@ -100,7 +100,7 @@ class DemoSource:
             (0.0, first, 1.4),
             (0.0, second_wrong, 2.0),
             (0.0, correct, 1.6),
-            (26 * pi / 180, correct, 1.2),
+            (26 * pi / 180, correct, 2.6),
             (0.0, correct, None),          # None = 다음 reset 까지 유지
         ]
 
@@ -173,10 +173,17 @@ class CameraSource:
     def __init__(self, index: int = 0, weights: str | None = "model/yolo_obb_parts.pt", frame_size=(1280, 720),
                  conf: float = 0.25, imgsz: int = 640, mapping_path: str | Path = "config/class_mapping.json",
                  capture=None, model=None, jpeg_quality: int = 80, refine_angles: bool = False,
-                 threaded: bool | None = None, max_fps: float = 20.0, video: str | None = None, loop: bool = True):
+                 threaded: bool | None = None, max_fps: float = 20.0, video: str | None = None, loop: bool = True,
+                 video_end: str | None = None):
         self.index, self.weights, self.frame_size = index, weights, tuple(frame_size)
-        # 8. 영상 파일 모드: 웹캠 대신 녹화한 조립 영상을 원래 속도로 재생하며 같은 판정을 돌린다 (끝나면 처음부터).
+        # 8. 영상 파일 모드: 웹캠 대신 녹화한 조립 영상을 원래 속도로 재생하며 같은 판정을 돌린다.
+        #    끝나면 video_end 대로: "hold" 마지막 장면을 계속 보여 준다 (카메라가 완성품을 계속 보는 것과 같다 —
+        #    PASS 와 [작업 완료] 버튼이 남는다) · "loop" 처음부터 · "stop" 끝. 새 작업·작업 완료(reset) 는 처음으로 되감는다.
         self.video, self.loop = (str(video) if video else None), loop
+        self.video_end = video_end or ("loop" if loop else "stop")
+        self.at_end = False                             # 영상 끝에서 마지막 장면을 유지 중인가 (화면 표시용)
+        self._rewind = False
+        self._last_img = None
         self._video_fps: float | None = None
         self._next_frame_at = 0.0
         self.conf, self.imgsz, self.jpeg_quality = conf, imgsz, jpeg_quality
@@ -199,8 +206,9 @@ class CameraSource:
         self.frame_id = 0
         self.last_error: str | None = None          # 진단용 — 마지막으로 프레임을 못 만든 이유
 
-    def reset(self, recipe) -> None:                 # 카메라는 레시피와 무관
-        pass
+    def reset(self, recipe) -> None:                 # 카메라는 레시피와 무관. 영상 파일이면 처음부터 다시 (다음 제품)
+        if self.video:
+            self._rewind = True
 
     # ── 장치·모델 열기 (지연 로딩: import 비용을 서버 시작이 아니라 첫 프레임에) ──
     def _open_capture(self):
@@ -294,13 +302,22 @@ class CameraSource:
                     if wait > 0:
                         time.sleep(wait)
                     self._next_frame_at = max(self._next_frame_at, time.perf_counter() - 1.0) + 1.0 / self._video_fps
+                if self._rewind and self._video_fps and not self._injected:
+                    import cv2
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 새 작업·작업 완료 → 영상을 처음부터
+                    self._rewind, self.at_end = False, False
                 ok, img = cap.read()
                 if (not ok or img is None) and self._video_fps and not self._injected:
-                    if not self.loop:
+                    if self.video_end == "stop":
                         return
-                    import cv2
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 영상 끝 → 처음부터
-                    ok, img = cap.read()
+                    if self.video_end == "hold" and self._last_img is not None:
+                        ok, img, self.at_end = True, self._last_img, True     # 영상 끝 → 마지막 장면 유지
+                    else:
+                        import cv2
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 영상 끝 → 처음부터
+                        ok, img = cap.read()
+                if ok and img is not None and self._video_fps:
+                    self._last_img = img
                 ts = now_ms()                            # 1. 캡처 시각
                 self.frame_id += 1
                 if not ok or img is None:

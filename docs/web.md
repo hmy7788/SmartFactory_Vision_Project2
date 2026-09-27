@@ -10,6 +10,7 @@ python -m web.server                     # 합성 데모, http://localhost:8000
 python -m web.server --speed 2           # 데모 시나리오 2배속 (발표 리허설)
 python -m web.server --source jsonl --jsonl detections.jsonl     # 기록한 검출 재생
 python -m web.server --source camera     # 웹캠 + YOLO-OBB (model/yolo_obb_parts.pt 가 있어야 함)
+python -m web.server --video 조립영상.mp4  # 녹화 영상으로 같은 판정. 끝나면 마지막 장면 유지(--video-end hold, 기본) · loop · stop
 python -m unittest tests.test_web        # 13개, 약 20초
 ```
 
@@ -44,6 +45,24 @@ DB 는 `data/pokayoke.db` 에 생긴다 (`--db` 로 바꿈). 저장 규칙은 [s
 
 대표 오류(작업 화면의 큰 글씨) 선정: `WRONG_*` > `UNEXPECTED_COMPONENT`/`EXTRA_COMPONENT` > `PART_ORIENTATION_ERROR` > `MISSING_*`, 같은 급이면 낮은 H 번호. 나머지는 "외 N건". 코드는 `app.js` 의 `PRIORITY`/`primaryIssue`.
 
+### 작업 화면이 흔들리지 않게 — 2026-09-27
+
+작업 화면은 payload 를 그대로 그리지 않는다. 코어의 **확정(`confirmed`)** 과 화면 쪽 완충값 몇 개로 만든 파생 상태만 그린다
+(`app.js` 의 `deriveView()` → `S.shown · S.rings · S.obs · S.matView · S.holdMode · S.chip`). 판정 자체는 바꾸지 않고, 보여 주는 타이밍만 늦춘다.
+
+| 완충 | 값 | 무엇을 막나 |
+|---|---|---|
+| `S.shown` 마지막 확정 판정 | — | 후보(`candidate`) 는 프레임마다 바뀐다. 큰 글씨·NG 상세·자리 표는 확정만 쓴다. 코어는 HOLD 가 오면 `confirmed` 를 비우지만 화면은 마지막 확정을 들고 있는다 |
+| `MAT_WINDOW_MS` 재료 수량 최빈값 | 700ms | 한두 프레임 오검출·손 가림으로 "있음" 칸과 "N개 더 놓으세요" 가 깜빡이는 것. 코어는 1000ms 안정을 따로 요구하므로 판정엔 영향 없음 |
+| `HOLD_GRACE_MS` 보류 유예 | 1500ms | 손이 Mother 를 잠깐 가려 HOLD 가 뜨는 것. 유예 안에는 마지막 확정 카드를 흐리게 두고 "확인 중" 칩만 붙인다(오버레이 링·기하도 유지). 넘기면 보류 화면 |
+| `CHIP_DELAY_MS` "확인 중" 칩 | 600ms | 후보가 확정과 달라진 채 이 시간이 지나야 칩이 붙는다. 코어 안정화(400ms) 안에 끝나는 정상 변화엔 안 보인다. 재료 단계엔 칩 없음 |
+| 진행 막대 | — | 재료가 딱 맞으면 "준비 완료" + 1000ms 막대, 조립에서 후보 PASS/NG 가 아직 확정 전이면 "확인 중" + 400ms 막대. 후보가 바뀌면 코어처럼 처음부터 |
+
+값은 `app.js` 맨 위 `UI` 상수. 큰 DOM 은 `workKey()`(파생 상태의 JSON) 가 바뀔 때만 다시 그리고, 막대·각도 숫자는 `updateLive()` 가 제자리에서 갱신한다.
+검사: `node tests/test_web_ui.js` (또는 `python -m unittest tests.test_web` 의 `UiLogicTests`) — 흔들리는 payload 순서를 넣고 화면이 몇 번 다시 그려지는지 센다.
+
+의심 지점: (1) 확정이 오래 안 되면(손이 계속 들어와 있음) 옛 판정이 "확인 중" 칩과 함께 남는다 — 코어 `status` 와 같은 성질. (2) 재료 최빈값은 부품을 새로 놓은 뒤 ~350ms 늦게 반영된다. (3) `ts_ms` 기준이라 폴링 폴백(200ms) 에서도 같은 값이 유지된다.
+
 ## payload 계약 (WS `/ws`, GET `/api/state`)
 
 파이프라인이 프레임마다 만든다. 화면은 이것만 본다.
@@ -60,6 +79,7 @@ DB 는 `data/pokayoke.db` 에 생긴다 (`--db` 로 바꿈). 저장 규칙은 [s
 | `events[]` | Store 기록 | 최근 12개 변화 이벤트 (`STATUS_CHANGED`, `ASSEMBLY_STARTED`, …) |
 | `timing{gap_ms,total_ms,fps,max_frame_gap_ms,stable_ms,material_stable_ms,max_angle_deg}` | 파이프라인·config | 진단 표시용 |
 | `recipe`, `recipes`, `run_id`, `product_id`, `frame_size`, `has_video`, `calibration_status` | | 헤더·오버레이 좌표계·영상 유무 |
+| `video_at_end` | 소스 | `--video` 에서 영상이 끝나 마지막 장면을 유지 중 (작업 화면에 안내 칩) |
 
 `frame_size` 는 소스가 정한다 — 오버레이는 이 좌표계를 canvas 에 맞춰 늘린다. 카메라를 붙일 때 실제 캡처 해상도를 넣어야 박스가 맞는다.
 
@@ -119,7 +139,7 @@ python -m web.server --source camera --camera 1 --camera-size 1920x1080 --weight
 
 - **과검율 없음**: 사람이 "이건 실제로 맞았다" 고 표시하는 입력이 없어서 오검(false NG) 을 셀 수 없다. 넣으려면 이력 탭에 "오판정" 버튼과 `products.verdict_override` 컬럼이 필요하다.
 - `calibration_status = UNVALIDATED_DEFAULTS`: ROI 가 실물 보정 전이라 데모의 부품 크기(`PART_LEN`) 는 실물 비율로 넣었을 뿐이다. 카메라를 붙이면 `config/mvp.json` 의 ROI 부터 맞춰야 오버레이의 "맞음" 이 맞다.
-- 오버레이의 H 라벨·링은 `stable` 이거나 HOLD 일 때만 갱신한다 (후보가 깜빡이는 걸 작업자에게 안 보이려고). 진단 탭은 매 프레임 갱신.
+- 오버레이의 H 라벨·링은 확정(`confirmed`) 에서만 갱신하고 HOLD 유예 중엔 유지한다 (위 "작업 화면이 흔들리지 않게"). 진단 탭은 매 프레임 갱신.
 - 헤더(레시피 select) 는 payload 의 모양이 바뀔 때만 다시 그린다 — 매 프레임 그리면 select 를 조작할 수 없다.
 - 하드 SVG 차트(외부 라이브러리 없음). 데이터가 수백 제품을 넘으면 `/api/analytics` 의 `days` 를 줄이거나 Store 쿼리에 인덱스를 보태야 한다.
 - 브라우저 1개 기준으로 확인했다. 여러 브라우저가 붙으면 `Hub` 가 전부에 fan-out 하지만 부하는 재지 않았다.
@@ -145,3 +165,14 @@ RT-DETR-l 은 CPU 에서 한 장 1~2초라 "캡처 → 추론 → 전송" 직렬
 화면은 부드럽고 판정만 추론 시간만큼 늦게 갱신된다 — 진단 탭 "모델 추론 / 판정 지연" 행에 ms 로 나온다.
 run_live.cmd 는 `--imgsz 480` 으로 띄운다(640 대비 약 2배 빠름, 부품이 크게 찍히므로 검출엔 충분).
 그래도 판정이 1초 이상 늦으면 팀원에게 `yolo11n`(CPU 30~60ms) 재학습을 부탁하는 게 정석 — 코드는 그대로다.
+
+## 녹화 영상으로 돌리기 (`--video`) — 2026-09-27
+
+`python -m web.server --video 조립영상.mp4` (또는 `run_video.cmd` 에 영상을 끌어다 놓기). `CameraSource` 가 웹캠 대신 파일을 파일 fps 로 읽고,
+추론·판정·화면은 카메라와 완전히 같다. 해상도는 파일 그대로(오버레이 좌표계).
+
+- **끝나면 (`--video-end`)**: `hold`(기본) 마지막 장면을 계속 낸다 — 카메라가 완성품을 계속 보는 것과 같아서 PASS 와 [작업 완료] 가 남는다.
+  `loop` 는 처음부터(PASS 가 곧 사라진다), `stop` 은 종료. 작업 화면에 "영상 끝 · 마지막 장면 유지 중" 칩이 뜬다 (`payload.video_at_end`).
+- **[새 작업]·[작업 완료]** 는 영상을 처음으로 되감는다 (`CameraSource.reset()`) — 다음 제품 = 같은 영상 다시.
+- **박스가 그려진 영상은 넣지 말 것**: `save_video_obb.cmd` 가 만든 `*_obb.mp4` 는 박스·라벨이 화면에 박혀 있어 모델이 부품을 못 잡는다 (재료 확인에서 멈춘다). 원본 영상을 넣는다.
+- 검사: `tests/test_web.py::CameraSourceTests::test_video_end_hold_keeps_last_frame_and_reset_rewinds`.

@@ -200,7 +200,7 @@ def build(args) -> tuple[Starlette, Pipeline, Store, Hub]:
             raise SystemExit(f"영상 파일이 없습니다: {args.video}")
         factory = lambda recipe, cfg: CameraSource(args.camera, weights, frame_size=size, conf=args.conf,
                                                     imgsz=args.imgsz, mapping_path=ROOT / "config/class_mapping.json",
-                                                    refine_angles=args.refine_angles, video=args.video)
+                                                    refine_angles=args.refine_angles, video=args.video, video_end=args.video_end)
         model = weights or "camera-only"
     pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
     return create_app(pipeline, store, hub), pipeline, store, hub
@@ -215,7 +215,10 @@ def parse(argv=None):
     p.add_argument("--db", default="data/pokayoke.db")
     p.add_argument("--jsonl", default="detections.jsonl")
     p.add_argument("--camera", type=int, default=0)
-    p.add_argument("--video", default=None, help="웹캠 대신 녹화한 조립 영상 파일 (원래 속도로 반복 재생, 판정은 카메라와 같음). --source camera 로 간주")
+    p.add_argument("--video", default=None, help="웹캠 대신 녹화한 조립 영상 파일 (원래 속도로 재생, 판정은 카메라와 같음). --source camera 로 간주")
+    p.add_argument("--video-end", choices=["hold", "loop", "stop"], default="hold",
+                   help="영상이 끝나면: hold 마지막 장면 유지(기본 — PASS 와 [작업 완료] 가 남는다) · loop 처음부터 · stop 종료. "
+                        "[새 작업]·[작업 완료] 는 언제나 처음부터 다시 재생")
     p.add_argument("--weights", default="model/yolo_obb_parts.pt")
     p.add_argument("--camera-size", default="1280x720", help="캡처 해상도 WxH. 카메라가 다른 값을 주면 실제 값으로 바꿔 쓴다")
     p.add_argument("--conf", type=float, default=0.25, help="모델 후보 임계 (판정 임계 0.5 는 config)")
