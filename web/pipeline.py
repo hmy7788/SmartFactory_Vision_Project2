@@ -16,14 +16,16 @@ import json
 import queue
 import threading
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from math import degrees
 from pathlib import Path
 from typing import Callable
 
 from src.app.inspection_service import InspectionService
 from src.contracts.inspection import Status
-from src.geometry.mother_frame import major_axis
+from src.geometry.association import associate
+from src.geometry.mother_frame import major_axis, mother_pose
+from src.geometry.roi_builder import build_geometry
 from src.process.recipe import load_recipe
 
 from web.source import now_ms
@@ -77,6 +79,18 @@ class Pipeline:
         self._thread = threading.Thread(target=self._loop, name="pipeline", daemon=True)
         self._last_ts: int | None = None
         self._fps_window: list[float] = []
+        # 완성품 반출 대기: [작업 완료] 뒤 완성품이 작업대에 그대로 있으면, 재료 확인(화면 전체 개수 세기) 이 그 완성품의
+        # 부품을 '재료' 로 세어 바로 READY → 조립 → PASS 가 되어 버린다 (09-28 시연에서 본 것).
+        # 그래서 작업대가 '비었다' 를 clear_duration_ms 이상 · clear_min_frames 프레임 이상 연달아 본 뒤에야 다음 제품(재료 확인) 을 연다.
+        #   비었다 = Mother 가 안 보인다 (완성품을 내렸다)  또는  Mother 에 아무것도 꽂혀 있지 않다 (그 자리에서 분해했다)
+        # 실제 카메라에서만 켠다 (server.py). 영상·데모는 [작업 완료] 때 처음부터 다시 재생되어 완성품이 남아 있지 않다.
+        self.require_clear = False
+        self.clear_ms = int(config.get("clear_duration_ms", 1000))
+        self.clear_frames = int(config.get("clear_min_frames", 3))
+        self.awaiting_clear = False
+        self._clear_since: float | None = None
+        self._clear_count = 0
+        self._clear_info: dict = {}
 
     # ── 명령 (웹 스레드에서 호출) ──
     def refresh_recipes(self) -> list[dict]:
@@ -104,6 +118,8 @@ class Pipeline:
 
     def complete(self) -> dict:
         """PASS 확정 상태에서만 허용. 아니면 이유를 돌려주고 아무것도 하지 않는다."""
+        if self.awaiting_clear:
+            return {"ok": False, "reason": "먼저 완성품을 작업대에서 내리거나 분해해 주세요 — 그러면 다음 제품의 재료 확인이 시작됩니다"}
         if self.mes is not None:
             ok, reason = self.mes.can_complete()
             if not ok:
@@ -131,8 +147,63 @@ class Pipeline:
 
     # ── 루프 ──
     def _new_product(self, first_ts: int) -> None:
-        self.product_id = self.store.open_product(self.run_id, self.recipe.recipe_id, first_ts)
         self.events = []
+        if self.awaiting_clear:                     # 완성품 반출 대기 중에는 제품을 열지 않는다 (비운 순간 연다 — 사이클 시간에 반출 시간이 안 섞이게)
+            self.product_id = None
+            return
+        self.product_id = self.store.open_product(self.run_id, self.recipe.recipe_id, first_ts)
+
+    def _start_await_clear(self) -> None:
+        self.awaiting_clear, self._clear_since, self._clear_count, self._clear_info = True, None, 0, {}
+
+    def _table_clear(self, frame) -> tuple[bool, dict]:
+        """반출 대기를 끝내도 되는 장면인가 → (끝내도 됨, 화면에 보일 것).
+        끝내도 됨: Mother 가 안 보인다(완성품을 내렸다) · Mother 는 있지만 아무것도 꽂혀 있지 않다(그 자리에서 다 분해했다).
+        판단할 수 없는 장면(카메라 입력 없음 · Mother 두 개 · 자세 계산 실패 · Mother 위에 걸친 부품) 은 '아직' 이다.
+        꽂혀 있는지는 코어와 같은 함수(mother_pose · build_geometry · associate) 로 본다 — 조립 검사와 같은 기준."""
+        if not frame.input_valid:
+            return False, {"mother": None, "attached": []}
+        threshold = self.config["confidence_threshold"]
+        detections = tuple(d for d in frame.detections if d.confidence >= threshold)
+        mothers = [d for d in detections if d.class_name == "mother_part"]
+        if not mothers:
+            return True, {"mother": False, "attached": []}
+        if len(mothers) > 1:
+            return False, {"mother": True, "attached": []}
+        try:
+            geometry = build_geometry(mother_pose(mothers[0], self.config), self.config)
+            observed, ambiguous, _ = associate(detections, geometry, self.config)
+        except (ValueError, KeyError, ZeroDivisionError):
+            return False, {"mother": True, "attached": []}
+        attached = sorted(d["class_name"] for slots in observed.values() for d in slots["bolt"] + slots["part"])
+        return not attached and not ambiguous, {"mother": True, "attached": attached}
+
+    def _await_clear_step(self, frame) -> bool:
+        """반출 대기 중이면 이 프레임으로 '작업대가 비었는가' 를 세고, 끝낼 차례면 다음 제품을 연다.
+        돌려주는 값: 이 프레임에서도 아직 대기 중인가."""
+        if not self.awaiting_clear:
+            return False
+        clear, self._clear_info = self._table_clear(frame)
+        if not clear:                               # 한 프레임이라도 완성품이 보이면 처음부터 다시 센다
+            self._clear_since, self._clear_count = None, 0
+            return True
+        if self._clear_since is None:
+            self._clear_since = frame.timestamp_ms
+        self._clear_count += 1
+        if self._clear_count < self.clear_frames or frame.timestamp_ms - self._clear_since < self.clear_ms:
+            return True
+        self.awaiting_clear, self._clear_since, self._clear_count, self._clear_info = False, None, 0, {}
+        self.service.reset(self.recipe)             # 반출 동안 본 것은 버리고 깨끗한 재료 확인부터
+        self._new_product(frame.timestamp_ms)
+        return False
+
+    def _await_view(self, ts) -> dict | None:
+        """작업 화면의 '완성품 반출' 카드가 쓰는 것. 대기 중이 아니면 None."""
+        if not self.awaiting_clear:
+            return None
+        pct = 0 if self._clear_since is None else min(100, round(100 * (ts - self._clear_since) / max(1, self.clear_ms)))
+        return {"mother": self._clear_info.get("mother"), "attached": self._clear_info.get("attached", []),
+                "clear_pct": pct, "clear_ms": self.clear_ms}
 
     def _apply_commands(self, ts: int) -> None:
         while True:
@@ -145,7 +216,7 @@ class Pipeline:
                 if self.product_id is not None:
                     self.store.close_product(self.product_id, ts, result="ABANDONED")
                 self.service.reset(self.recipe); self.source.reset(self.recipe); self._new_product(ts)
-            elif cmd == "reset":
+            elif cmd == "reset":                        # [새 작업]. 반출 대기는 끝내지 않는다 — 완성품이 남아 있으면 또 재료로 세어진다
                 if self.product_id is not None:
                     self.store.close_product(self.product_id, ts, result="ABANDONED")
                 self.service.reset(); self.source.reset(self.recipe); self._new_product(ts)
@@ -171,6 +242,9 @@ class Pipeline:
                     if self.mes is not None:           # 수량 +1, result 를 outbox 로 (보내기는 mes 스레드가)
                         self.mes.product_completed(summary, self.store.ng_codes(self.product_id))
                     box.update({"ok": True, "product": summary})
+                    self.product_id = None
+                    if self.require_clear:             # 완성품을 치울 때까지 다음 제품(재료 확인) 을 시작하지 않는다
+                        self._start_await_clear()
                     self.service.reset(); self.source.reset(self.recipe); self._new_product(ts)
                 except Exception as error:               # 화면에 이유를 돌려준다. 루프는 죽지 않는다.
                     box.update({"ok": False, "reason": str(error)})
@@ -182,16 +256,19 @@ class Pipeline:
             if self._stop.is_set():
                 break
             t0 = time.perf_counter()
-            if self.product_id is None:
+            if self.product_id is None and not self.awaiting_clear:
                 self._new_product(frame.timestamp_ms)
             self._apply_commands(frame.timestamp_ms)
-            snapshot = self.service.update(frame)
+            waiting = self._await_clear_step(frame)
+            # 반출 대기 중에는 코어에 빈 프레임을 넣는다 — 완성품의 부품을 재료로 세지 않게 (화면 영상·검출 박스는 그대로)
+            snapshot = self.service.update(replace(frame, detections=()) if waiting else frame)
             mothers = [d for d in frame.detections if d.class_name == "mother_part"]
             angle = degrees(major_axis(mothers[0])[2]) if len(mothers) == 1 else None
             gap = (frame.timestamp_ms - self._last_ts) if self._last_ts is not None else None
             self._last_ts = frame.timestamp_ms
-            written = self.store.record(self.product_id, snapshot, mother_angle_deg=angle,
-                                        latency_ms=now_ms() - int(frame.timestamp_ms))
+            written = (self.store.record(self.product_id, snapshot, mother_angle_deg=angle,
+                                         latency_ms=now_ms() - int(frame.timestamp_ms))
+                       if self.product_id is not None else 0)       # 반출 대기 중에는 기록할 제품이 없다
             total_ms = (time.perf_counter() - t0) * 1000
             self.store.frame(self.run_id, infer_ms=getattr(self.source, "infer_ms", None) or 0.0, total_ms=total_ms, gap_ms=gap,
                              hold=snapshot.candidate.status is Status.HOLD)
@@ -221,6 +298,8 @@ class Pipeline:
             "recipe": self.recipes[self.recipe.recipe_id],
             "recipes": sorted(self.recipes),
             "run_id": self.run_id, "product_id": self.product_id,
+            "await_clear": self._await_view(frame.timestamp_ms),          # 완성품 반출 대기 중이면 {mother, attached, clear_pct} (작업 화면: '완성품을 치워 주세요')
+            "clear_wait": self.require_clear,                             # [작업 완료] 뒤 반출 대기를 하는가 (PASS 카드 안내 문구)
             "model": getattr(self, "model_label", None),                # 어떤 가중치로 돌고 있는지 (모델 비교할 때)
             "phase": snapshot.phase.value, "evaluated_phase": snapshot.evaluated_phase.value,
             "status": snapshot.status.value, "stable": snapshot.stable,

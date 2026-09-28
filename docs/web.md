@@ -97,13 +97,29 @@ DB 는 `data/pokayoke.db` 에 생긴다 (`--db` 로 바꿈). 저장 규칙은 [s
 
 `frame_size` 는 소스가 정한다 — 오버레이는 이 좌표계를 canvas 에 맞춰 늘린다. 카메라를 붙일 때 실제 캡처 해상도를 넣어야 박스가 맞는다.
 
+### 완성품 반출 대기 — 2026-09-28
+
+09-28 시연: 레시피1 을 끝내고 [작업 완료] 를 누르면, 작업대에 남은 완성품의 부품을 재료 확인(화면 전체 개수 세기, `evaluate_materials`) 이
+그대로 '재료' 로 세어 다음 레시피1 이 재료 확인 없이 1.4초 만에 조립 → PASS 가 됐다.
+
+이제 **실제 카메라** 에서는 [작업 완료] 뒤 다음 제품을 바로 열지 않고 작업대가 빌 때까지 기다린다 (`web/pipeline.py` `_await_clear_step`).
+
+| | |
+|---|---|
+| 끝나는 조건 | ① Mother 가 안 보인다 (완성품을 내렸다) 또는 ② Mother 에 아무것도 꽂혀 있지 않다 (그 자리에서 전부 분해했다) — 이것이 **1000ms 이상 · 3프레임 이상 연달아** (`clear_duration_ms` · `clear_min_frames`, config 에 없으면 기본값). 꽂혀 있는지는 코어와 같은 `mother_pose → build_geometry → associate` 로 본다 |
+| 안 끝나는 장면 | 카메라 입력 없음 · Mother 두 개 · Mother 위에 걸친 부품(모호) — 한 프레임이라도 완성품이 보이면 처음부터 다시 센다 (손 가림으로 잠깐 안 보이는 것에 속지 않게) |
+| 기다리는 동안 | 코어에는 빈 프레임을 넣는다 (재료로 세지 않게). 열린 제품 없음 → 기록 없음. [작업 완료] 는 409, [새 작업] 도 대기를 건너뛰지 못한다 (완성품이 남아 있으면 또 재료로 세어지므로) |
+| 작업 화면 | 판정 카드 `완성품 반출` (MES 대기 카드보다 앞) · 아직 꽂혀 있는 볼트·파트 칩 · 비었으면 다음 재료 확인까지 막대. 재료 표는 `대기` |
+| 끝나면 | 그 순간 새 제품을 연다 (사이클 시간에 반출 시간이 안 섞인다) → 평소 재료 확인 |
+| 켜고 끄기 | 기본은 실제 카메라만. 녹화 영상·데모는 [작업 완료] 때 처음부터 다시 재생되므로 끈다. `--clear-wait` / `--no-clear-wait` 로 강제 |
+
 ## REST
 
 | 경로 | 뜻 |
 |---|---|
 | `POST /api/recipe/{id}` | 레시피 변경 → 열린 제품 ABANDONED, 코어 reset. 모르는 id 는 404 |
-| `POST /api/reset` | 새 작업 (열린 제품 ABANDONED) |
-| `POST /api/complete` | 작업 완료. PASS 확정이 아니면 409 `{ok:false, reason}` |
+| `POST /api/reset` | 새 작업 (열린 제품 ABANDONED). 완성품 반출 대기는 끝내지 않는다 |
+| `POST /api/complete` | 작업 완료. PASS 확정이 아니면 · 완성품 반출 대기 중이면 409 `{ok:false, reason}` |
 | `GET /api/history?limit&recipe_id&result&ng_only&hold_only` | 제품 목록 |
 | `GET /api/timeline/{product_id}` | 그 제품의 이벤트 순서 |
 | `GET /api/analytics?days=7` | `fpy, fpy_daily, cycle, pareto, material_pareto, heatmap, recovery` |

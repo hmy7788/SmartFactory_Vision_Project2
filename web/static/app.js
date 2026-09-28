@@ -72,7 +72,7 @@ function human(i) {
 //   GEOM_KEEP_MS   보류 중 영상 위 H 링을 마지막 위치에 이 시간까지 유지 (손이 지나갈 때 링이 사라졌다 나타나지 않게. 더 길면 Mother 가 움직였을 수 있어 지운다)
 //   HOLD_HINT_MS   작업자가 고쳐야 하는 보류(Mother 기울어짐·두 개·안 보임·카메라) 가 이 시간 넘게 이어질 때만 판정 카드 맨 아래에 한 줄 안내
 const UI = { MAT_WINDOW_MS: 700, GEOM_KEEP_MS: 1500, HOLD_HINT_MS: 3000 };
-const UI_VERSION = "화면 0928 · MES";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
+const UI_VERSION = "화면 0928b · MES";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
 const S = { view: "work", p: null, prev: null, rings: null, obs: null, geom: null, shown: null, matHist: [], matView: null, holdSince: null, holdHint: null,
             candKey: null, candSince: null, keys: {},
             sub: "live", period: 7, events: [], hist: null, sel: null, ana: null, diag: null, recipes: null };
@@ -191,9 +191,10 @@ function workKeys(p) {
     frame: JSON.stringify([p.has_video, p.frame_size]),
     header: JSON.stringify([p.phase, p.recipe?.recipe_id, p.recipes, p.mes && [p.mes.connected, p.mes.pending > 0, p.mes.work_order]]),
     note: JSON.stringify([p.video_at_end]),
-    table: JSON.stringify([p.phase, p.recipe?.recipe_id, mat ? [d.e, d.o] : [S.rings, S.obs]]),
+    table: JSON.stringify([p.phase, p.recipe?.recipe_id, !!p.await_clear, mat ? [d.e, d.o] : [S.rings, S.obs]]),
     verdict: JSON.stringify([p.phase, p.recipe?.recipe_id, p.video_at_end, p.mes && p.mes.work_order, S.shown?.status === "PASS" && hold, S.holdHint,
-      S.shown && [S.shown.status, S.shown.issues], S.rings, d && [d.remove, d.add, d.o]]),
+      S.shown && [S.shown.status, S.shown.issues], S.rings, d && [d.remove, d.add, d.o],
+      p.await_clear && [p.await_clear.mother, p.await_clear.attached, p.await_clear.clear_pct > 0]]),
   };
 }
 
@@ -290,6 +291,11 @@ function videoCard(p, diag) {
 }
 function tableMaterials(p) {
   const { e, o } = matDiff(p);          // 완충된 수량 — 한두 프레임 오검출로 줄이 깜빡이지 않는다
+  if (p.await_clear) {                  // 완성품 반출 대기: 작업대의 완성품을 재료로 세지 않는다 (코어도 이 동안은 빈 화면을 본다)
+    const rows = CLASS_ORDER.map((c) => `<tr class="skip"><td>${NAME[c]}</td><td class="mono">${e[c] ?? 0}</td><td class="mono">—</td><td class="st">대기</td></tr>`).join("");
+    return `<h3>재료 확인 <span class="note">완성품을 치우면 새로 셉니다</span></h3>
+    <table class="t"><tr><th>종류</th><th>필요</th><th>있음</th><th>상태</th></tr>${rows}</table>`;
+  }
   const rows = CLASS_ORDER.map((c) => {
     const ex = e[c] ?? 0, ob = o[c] ?? 0;
     let cls = "ok", st = "✓";
@@ -322,7 +328,13 @@ function verdictCard(p) {
   const mat = p.phase === "CHECK_MATERIALS", shown = S.shown, holdNow = p.candidate.status === "HOLD";
   let big = "", sub = "", body = "", hint = "", cls = "IN_PROGRESS", locked = false;
   const wo = p.mes?.work_order;
-  if (p.mes && (!wo || wo.status !== "IN_PROGRESS")) {       // MES 연동: 진행 중인 작업지시가 없으면 대기
+  if (p.await_clear) {                                        // [작업 완료] 직후: 완성품을 치워야 다음 재료 확인이 열린다
+    const a = p.await_clear, left = a.attached || [];
+    cls = "CLEAR"; big = "완성품 반출"; sub = "작업대에서 완성품을 치워 주세요";
+    if (a.clear_pct > 0) body = clearBar(a);
+    else if (left.length) body = `<div class="label">아직 Mother 에 꽂혀 있는 것</div>` + left.map((c) => chip(c === "bolt_1" ? "b1" : c === "bolt_2" ? "b2" : "part", SHORT[c] || c, "lg")).join("");
+    hint = "완성품을 작업대에서 내리거나 그 자리에서 전부 분해하면 다음 제품의 재료 확인이 자동으로 시작됩니다. 누를 것 없습니다.";
+  } else if (p.mes && (!wo || wo.status !== "IN_PROGRESS")) {       // MES 연동: 진행 중인 작업지시가 없으면 대기
     cls = "WAIT";
     if (wo?.status === "COMPLETED") { big = "작업지시 완료"; sub = `${wo.work_order_id} · ${wo.recipe_id} · ${wo.done}/${wo.quantity}` + ((wo.next || []).length ? ` → 다음 ${wo.next[0].recipe_id} × ${wo.next[0].quantity} 준비 중` : ""); }
     else { big = "대기"; sub = wo?.status === "CANCELLED" ? `${wo.work_order_id} 취소됨` : "작업지시를 기다리는 중"; }
@@ -348,7 +360,9 @@ function verdictCard(p) {
       body = `<button class="bigbtn" id="btn-complete" ${locked ? "disabled" : ""}>작업 완료</button>`;
       hint = locked ? "손을 떼고 잠시 기다리면 누를 수 있습니다."
            : p.video_at_end ? "영상이 끝나 마지막 장면을 유지하고 있습니다. 누르면 기록되고 영상이 처음부터 다시 재생됩니다."
-                            : "누르면 기록되고 다음 제품의 재료 확인으로 넘어갑니다.<br>누르기 전까지는 계속 보고 있습니다 — 빼면 다시 '조립 중'이 됩니다.";
+                            : (p.clear_wait ? "누르면 기록됩니다. 그다음 완성품을 작업대에서 치우면 다음 제품의 재료 확인이 시작됩니다."
+                                            : "누르면 기록되고 다음 제품의 재료 확인으로 넘어갑니다.")
+                              + "<br>누르기 전까지는 계속 보고 있습니다 — 빼면 다시 '조립 중'이 됩니다.";
     } else if (st === "NG") {
       cls = "NG"; big = "NG";
       const issues = (shown.issues || []).filter((i) => !i.code.startsWith("MISSING"));
@@ -378,8 +392,10 @@ function verdictCard(p) {
   return `<div class="card verdict ${cls}" id="verdict"><div class="big ${big.length > 4 ? "long" : ""}">${esc(big)}</div><div class="sub">${esc(sub)}</div><div class="body">${body}</div>${hint ? `<div class="hint">${hint}</div>` : ""}</div>`;
 }
 function progressBar(label, p) { return `<div class="prog"><div class="cap">${esc(label)}</div><div class="bar"><i id="prog" style="width:${progressPct(p).toFixed(0)}%"></i></div></div>`; }
+function clearBar(a) { return `<div class="prog"><div class="cap">작업대가 비었습니다 — 다음 제품 재료 확인까지</div><div class="bar"><i id="prog-clear" style="width:${a.clear_pct}%"></i></div></div>`; }
 function updateLive(p) {   // DOM 을 다시 그리지 않고 제자리에서 바뀌는 것: 진행 막대 · 안내 줄의 각도 숫자
   const bar = $("#prog"); if (bar) bar.style.width = `${progressPct(p).toFixed(0)}%`;
+  const cb = $("#prog-clear"); if (cb && p.await_clear) cb.style.width = `${p.await_clear.clear_pct}%`;
   const act = $("#verdict .hint .act"); if (act && S.holdHint) act.textContent = ACT_HINT[S.holdHint](p);
 }
 

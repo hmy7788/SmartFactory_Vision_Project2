@@ -24,12 +24,25 @@ ROOT = Path(__file__).resolve().parents[1]
 VIDEO_EXT = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".m4v"}
 
 
-def ask(prompt: str, default: str) -> str:
-    try:
-        got = input(f"{prompt} [{default}]: ").strip()
-    except EOFError:
-        got = ""
-    return got or default
+CAMERA_PROMPT_S = 10                        # 카메라 번호를 이 시간 안에 안 고르면 기본값 — MES 시연에서 창을 안 봐도 검사대가 뜨게
+
+
+def ask(prompt: str, default: str, timeout: float | None = None) -> str:
+    if timeout is None:
+        try:
+            got = input(f"{prompt} [{default}]: ").strip()
+        except EOFError:
+            got = ""
+        return got or default
+    print(f"{prompt} [{default}]  ({timeout:.0f}초 안에 안 고르면 {default}): ", end="", flush=True)
+    box: list[str] = []
+    reader = threading.Thread(target=lambda: box.append(sys.stdin.readline()), daemon=True)
+    reader.start()
+    reader.join(timeout)
+    if not box:                             # 아무도 안 눌렀다
+        print(f"\n  → {default}")
+        return default
+    return box[0].strip() or default
 
 
 def pick_weights() -> Path | None:
@@ -75,7 +88,7 @@ def pick_camera() -> int:
         return 0
     default = max(found)                    # 나중에 꽂은 USB 웹캠이 보통 가장 큰 번호
     print("  노트북 내장은 보통 0, USB 웹캠은 보통 1")
-    got = ask("카메라 번호", str(default))
+    got = ask("카메라 번호", str(default), timeout=CAMERA_PROMPT_S)
     return int(got) if got.isdigit() else default
 
 

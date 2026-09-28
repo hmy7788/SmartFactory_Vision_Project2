@@ -254,6 +254,10 @@ def build(args, preloaded=None) -> tuple[Starlette, Pipeline, Store, Hub]:
             recipe = wo["recipe_id"]
     pipeline = Pipeline(config, recipe_dirs, store, factory, recipe, hub.publish, model_file=model)
     pipeline.model_label = model_label if args.source == "camera" else model   # 진단 탭 · 사이드바에 보이는 모델 이름
+    # [작업 완료] 뒤 완성품을 치울 때까지 다음 재료 확인을 열지 않는다 (web/pipeline.py '완성품 반출 대기').
+    # 기본은 실제 카메라에서만 — 녹화 영상·데모는 [작업 완료] 때 처음부터 다시 재생되므로 필요 없다.
+    clear_wait = getattr(args, "clear_wait", None)
+    pipeline.require_clear = (args.source == "camera" and not args.video) if clear_wait is None else clear_wait
     if link is not None:
         pipeline.attach_mes(link)
     return create_app(pipeline, store, hub), pipeline, store, hub
@@ -288,6 +292,9 @@ def parse(argv=None):
     p.add_argument("--conf", type=float, default=0.25, help="모델 후보 임계 (판정 임계 0.5 는 config)")
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--no-model", action="store_true", help="가중치 없이 카메라 영상만 (구도·해상도 확인용). 판정은 전부 보류")
+    p.add_argument("--clear-wait", action=argparse.BooleanOptionalAction, default=None,
+                   help="[작업 완료] 뒤 완성품을 작업대에서 내리거나 분해할 때까지 다음 재료 확인을 시작하지 않는다. "
+                        "생략하면 실제 카메라에서만 켜짐 (영상·데모는 꺼짐). --no-clear-wait 로 끈다")
     p.add_argument("--fps", type=float, default=10.0)
     p.add_argument("--speed", type=float, default=1.0, help="데모 시나리오 배속 (안정화 창도 같이 나눔, demo 전용)")
     p.add_argument("--mes-broker", default=None, help="MES 연동: MQTT 브로커 주소 (예: localhost:1883). 없으면 연동 없이 지금처럼")

@@ -227,5 +227,33 @@ scenario("MES work order drives the header and waiting card", () => {
   check("MES queue → header shows the next line", hmid._html.includes("다음 recipe_2 × 3") && hmid._html.includes("외 1건"), hmid._html);
 });
 
+// 11. [작업 완료] 직후 완성품 반출 대기 (0928b): 완성품이 작업대에 남아 있는 동안은 재료 확인·[작업 완료] 대신 '완성품 반출' 카드.
+//     MES 대기 카드보다 앞선다. 비었다고 세는 동안은 막대만 제자리에서 차오르고, 끝나면(새 제품) 평소 재료 확인으로 돌아온다.
+scenario("after 작업 완료 the removal card holds until the table is clear", () => {
+  const MAT = { phase: "CHECK_MATERIALS", evaluated_phase: "CHECK_MATERIALS" };
+  const wait = (a, more = {}) => feed({ candidate: { status: "IN_PROGRESS", issues: [] }, observed: {}, extra: { ...MAT, product_id: null, await_clear: a, ...more } });
+  wait({ mother: true, attached: ["bolt_1", "bolt_2", "part_2hole", "part_3hole"], clear_pct: 0, clear_ms: 1000 });
+  check("removal card instead of the materials check", text().includes("완성품 반출") && text().includes("작업대에서 완성품을 치워 주세요") && !text().includes("재료 준비"), text().slice(0, 300));
+  check("no complete button while waiting", !html().includes("btn-complete"));
+  check("materials table is not counted", table._html.includes("대기") && !table._html.includes("개 더") && table._html.includes("완성품을 치우면"), table._html.slice(0, 200));
+  check("lists what is still on the Mother", text().includes("아직 Mother 에 꽂혀 있는 것") && text().includes("노란 볼트") && text().includes("3구 파트"));
+  check("no hold/checking words", !HOLD_WORDS.test(text()), text().slice(0, 300));
+  const MES_IDLE = { mes: { enabled: true, connected: true, station_id: "VIS-01", broker: "localhost:1883", pending: 0,
+                            work_order: { work_order_id: "WO-7", recipe_id: "recipe_1", recipe_version: 3, quantity: 3, done: 3, status: "COMPLETED" } } };
+  wait({ mother: true, attached: ["part_2hole"], clear_pct: 0, clear_ms: 1000 }, MES_IDLE);
+  check("removal comes before the MES waiting card", text().includes("완성품 반출") && !text().includes("작업지시 완료"), text().slice(0, 300));
+  wait({ mother: false, attached: [], clear_pct: 30, clear_ms: 1000 });
+  check("clear → countdown bar", html().includes('id="prog-clear"') && text().includes("다음 제품 재료 확인까지"), text().slice(0, 300));
+  const before = renders.verdict + renders.table;
+  for (const pct of [45, 60, 80, 95]) wait({ mother: false, attached: [], clear_pct: pct, clear_ms: 1000 });
+  check("countdown does not re-render the card", renders.verdict + renders.table === before, JSON.stringify(renders));
+  product++;
+  feed({ candidate: PASS, confirmed: PASS, stable: true, extra: { clear_wait: true } });
+  check("live camera PASS hint mentions clearing the table", text().includes("완성품을 작업대에서 치우면") && html().includes("btn-complete"), text().slice(0, 400));
+  product++;
+  feed({ candidate: { status: "IN_PROGRESS", issues: [] }, observed: {}, extra: { ...MAT, await_clear: null } });
+  check("new product → normal materials check", text().includes("재료 준비") && !text().includes("완성품 반출") && !table._html.includes("대기"), text().slice(0, 300));
+});
+
 console.log(`\n${passed} checks passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

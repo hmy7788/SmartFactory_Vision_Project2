@@ -112,6 +112,9 @@ table.t tr.click { cursor: pointer; }
 .wo.off .dot { background: #E5484D; }
 .wo .next { color: #C9D6F2; font-size: 14px; border-left: 1px solid #4A63A8; padding-left: 10px; margin-left: 2px; }
 .verdict.WAIT { background: #F4F6FA; border-color: var(--skip); color: #4A5568; }
+/* 완성품 반출 대기 (0928b): [작업 완료] 뒤 완성품을 치울 때까지. 작업자가 할 일이 있으므로 회색 대기와 구분 */
+.verdict.CLEAR { background: var(--hold-bg); border-color: var(--hold); color: var(--hold); }
+.verdict.CLEAR .prog .bar i { background: var(--hold); }
 #sidebar .ver { color: #5F74A8; font-size: 11px; margin-bottom: 10px; text-align: center; white-space: pre-line; word-break: break-all; padding: 0 4px; }
 .verdict.READY { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
 /* 확정까지 남은 시간 막대 (재료 READY 1초). 코어가 세는 시간을 보여 줄 뿐, 화면이 판정하지 않는다 */
