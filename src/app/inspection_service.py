@@ -3,7 +3,7 @@ from src.contracts.inspection import Candidate, Issue, Snapshot, Status, Phase
 from src.geometry.mother_frame import mother_pose
 from src.geometry.roi_builder import build_geometry
 from src.geometry.association import associate
-from src.process.evaluator import evaluate
+from src.process.evaluator import evaluate, evaluate_symmetric
 from src.process.materials import evaluate_materials
 from src.process.state_machine import StateMachine
 
@@ -51,7 +51,16 @@ class InspectionService:
                 geometry["ignored_detections"] = ignored
                 if ambiguous:
                     reasons.append(Issue("AMBIGUOUS_ASSOCIATION", observed=",".join(ambiguous)))
-            candidate = evaluate(self.recipe, observed) if not reasons else Candidate(Status.HOLD)
+            mirrored = False
+            if reasons:
+                candidate = Candidate(Status.HOLD)
+            elif self.config.get("allow_mirrored_holes"):
+                # Opt-in: accept the assembly read from either end of the symmetric Mother.
+                candidate, mirrored = evaluate_symmetric(self.recipe, observed)
+            else:
+                candidate = evaluate(self.recipe, observed)
+            if geometry:
+                geometry["hole_numbering"] = "mirrored" if mirrored else "direct"
         if reasons:
             candidate = Candidate(Status.HOLD, tuple(sorted(reasons)))
         stable, changed = self.machine.update(candidate, frame.timestamp_ms)
