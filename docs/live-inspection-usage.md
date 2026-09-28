@@ -76,7 +76,7 @@ python -m scripts.live_inspection --video 1.mp4 --recipe 3 --save-video runs/ins
 | 옵션 | 기본값 | 설명 |
 |---|---|---|
 | `--recipe {1,2,3}` | 1 | 시작 레시피 |
-| `--model-type {rtdetr,yolo,yolo-obb}` | rtdetr | 검출 모델 종류 (아래 "모델 종류 바꾸기" 참고) |
+| `--model-type {rtdetr,yolo,yolo-obb,rule_based}` | rtdetr | 검출 모델 종류 (아래 "모델 종류 바꾸기" 참고) |
 | `--weights` | `--model-type`별 기본값 | 가중치 경로 |
 | `--conf` | config의 `confidence_threshold`(0.5) | 검출 confidence |
 | `--config` | `config/rtdetr_live.json` | 판정 설정 (아래 참고) |
@@ -97,14 +97,22 @@ python -m scripts.live_inspection --video 1.mp4 --recipe 3 --save-video runs/ins
 | `rtdetr` (기본) | `ultralytics.RTDETR` | `runs/rtdetr/full_run/weights/best.pt` | AABB만 나와서 `rtdetr_adapter.py`가 mother 각도를 영상에서 복원 |
 | `yolo` | `ultralytics.YOLO` (detect) | 없음 — `--weights` 필수 | rtdetr와 같은 AABB라 같은 어댑터 재사용 |
 | `yolo-obb` | `ultralytics.YOLO` (obb) | `model/yolo_obb_parts.pt` | 결과에 각도가 이미 있어 복원 없이 그대로 사용 (CLAUDE.md 확정 메인 파이프라인) |
+| `rule_based` | 없음(모델 자체가 없음) | 불필요 | `src/vision/rule_based_adapter.py`가 classical CV(색상+구멍 개수)로 직접 컨투어를 찾아 각도까지 구함 |
 
 ```
 python -m scripts.live_inspection --model-type yolo-obb --camera 1 --recipe 3
 python -m scripts.live_inspection --model-type yolo --weights runs/yolo/best.pt --camera 1
+python -m scripts.live_inspection --model-type rule_based --camera 1 --recipe 3
 ```
 
 - 클래스 이름이 5클래스(`bolt_2, bolt_1, mother_part, part_3hole, part_2hole`)와 다르면 HUD 색상 매핑(`src/app/hud.py`)이 못 알아봄 → 같은 클래스 이름/개수로 학습된 가중치여야 함
 - `yolo-obb`는 회전각을 다시 재는 과정이 없어 `rtdetr`/`yolo`보다 프레임당 더 빠르고, 우하단 각도 표시는 `obb`로 나옴
+- `rule_based`는 학습된 모델·가중치가 아예 없어도 바로 켜진다. 대신 "빈 구멍 개수"로 부품 종류를
+  구분하기 때문에 **볼트가 이미 꽂힌 부품은 구멍이 줄어 오분류/미검출될 수 있고, 부품끼리
+  맞닿아 있으면 하나로 합쳐져 분리가 안 된다** — 재료 섹션(부품이 서로 떨어진 상태)에서 가장
+  안정적이고, 조립이 진행될수록(볼트가 꽂힐수록) 정확도가 떨어진다. 손에 가려도 별도 보정이
+  없다(실측: 픽킹 영상 프레임 일부에서 오분류 확인됨). 자세한 한계는 `rule_based_adapter.py`
+  docstring 참고
 
 ## 6. 판정 설정 (`--config`)
 
@@ -150,7 +158,7 @@ DroidCam은 `cv2.CAP_MSMF`로 같은 방식으로 확인. 화면을 저장해서
 
 ### 9-1. 자동 테스트 (pytest) — 카메라/GPU 불필요
 
-전체 실행 (현재 74개):
+전체 실행 (현재 86개):
 
 ```
 python -m pytest tests -q
@@ -162,6 +170,7 @@ python -m pytest tests -q
 | `tests/test_material_workflow.py` | 13 | 재료 확인 → 조립 검사 단계 전환 |
 | `tests/test_rtdetr_adapter.py` | 19 | RT-DETR 어댑터: mother 각도 복원, 45° 부근 치수, 부품 축, 중복 제거, 각도 hold/fallback |
 | `tests/test_relaxed_orientation.py` | 11 | 완화 설정: 기본은 위쪽 부품/±15°/뒤집힘 불가 유지, 완화 시 허용, 잘못된 구멍·볼트는 여전히 NG |
+| `tests/test_rule_based_adapter.py` | 12 | `--model-type rule_based` 어댑터: 색상/구멍개수 분류, 각도 복원, 길이비율 2차 판정, 문서화된 오분류 한계 |
 
 파일 단위 / 특정 테스트만:
 

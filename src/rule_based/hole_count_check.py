@@ -113,6 +113,7 @@ JOINT_COLORFUL_MIN_RATIO = 0.15    # 샘플 영역 중 이 비율 이상이 채�
 
 # ⚠️ 아래 임계값들은 실측 사진 100장(model_a/b/c)으로 튜닝한 값.
 MIN_BAR_AREA_RATIO = 0.003    # 전체 프레임 대비 최소 나무 구조물 면적 비율 (노이즈 제외)
+MIN_BOLT_AREA_RATIO = 0.0004  # find_all_blobs에서 볼트처럼 작은 물체까지 잡기 위한 최소 면적 비율
 MIN_HOLE_AREA_RATIO = 0.0008  # 구멍 vs 나무결 장식 무늬(area_ratio<=0.00035) 구분용
 HOLE_CIRCULARITY_MIN = 0.35   # 모서리/그림자에 걸친 구멍은 원형도가 낮게 나옴(실측 0.38~0.40)
 MOTHER_BAND_WIDTH_RATIO = 0.6  # 이 비율 이상 넓은 행들을 "mother_part 몸통"으로 간주
@@ -142,6 +143,30 @@ def _centroid(cnt):
     return (m["m10"] / m["m00"], m["m01"] / m["m00"])
 
 
+def _threshold_and_contours(image):
+    """검은 배경 위 전경을 Otsu로 분리해 RETR_CCOMP 컨투어+계층을 반환한다 (find_bar_and_holes,
+    find_all_blobs 공용). Returns: (contours, hierarchy_or_None)."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    kernel = np.ones((3, 3), np.uint8)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    return contours, (hierarchy[0] if hierarchy is not None else None)
+
+
+def _child_holes(contours, hierarchy, parent_index, min_hole_area):
+    """parent_index 컨투어의 자식(구멍) 중 크기/원형도 기준을 넘는 것만 골라낸다."""
+    holes = []
+    child = hierarchy[parent_index][2]
+    while child != -1:
+        child_cnt = contours[child]
+        if (cv2.contourArea(child_cnt) >= min_hole_area
+                and _circularity(child_cnt) >= HOLE_CIRCULARITY_MIN):
+            holes.append(child_cnt)
+        child = hierarchy[child][0]
+    return holes
+
+
 def find_bar_and_holes(image, area_ref=None):
     """
     나무 구조물의 (가장 큰) 외곽 컨투어 하나와, 그 안의 "빈" 구멍 컨투어 리스트를 찾는다.
@@ -156,15 +181,9 @@ def find_bar_and_holes(image, area_ref=None):
     min_bar_area = MIN_BAR_AREA_RATIO * ref
     min_hole_area = MIN_HOLE_AREA_RATIO * ref
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    kernel = np.ones((3, 3), np.uint8)
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-
-    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = _threshold_and_contours(image)
     if hierarchy is None or not contours:
         return None, []
-    hierarchy = hierarchy[0]
 
     top_level = [(i, cnt) for i, cnt in enumerate(contours) if hierarchy[i][3] == -1]
     top_level = [(i, cnt) for i, cnt in top_level if cv2.contourArea(cnt) >= min_bar_area]
@@ -172,16 +191,32 @@ def find_bar_and_holes(image, area_ref=None):
         return None, []
     i, bar_cnt = max(top_level, key=lambda ic: cv2.contourArea(ic[1]))
 
-    empty_holes = []
-    child = hierarchy[i][2]
-    while child != -1:
-        child_cnt = contours[child]
-        if (cv2.contourArea(child_cnt) >= min_hole_area
-                and _circularity(child_cnt) >= HOLE_CIRCULARITY_MIN):
-            empty_holes.append(child_cnt)
-        child = hierarchy[child][0]
+    return bar_cnt, _child_holes(contours, hierarchy, i, min_hole_area)
 
-    return bar_cnt, empty_holes
+
+def find_all_blobs(image, area_ref=None, min_area_ratio=None):
+    """
+    find_bar_and_holes와 같은 Otsu+RETR_CCOMP 방식으로, 가장 큰 것 하나가 아니라 **크기
+    기준을 넘는 모든 전경 덩어리**를 찾는다 (재료 섹션/조립 섹션에 여러 부품이 따로 놓인
+    장면을 한 프레임에서 다 잡기 위함 — src/vision/rule_based_adapter.py 전용).
+    min_area_ratio: 기본은 MIN_BAR_AREA_RATIO(나무막대 기준)보다 작은 값을 넘겨서
+    볼트처럼 작은 물체도 잡아야 한다.
+    Returns: [(contour, empty_hole_contours), ...] (면적 내림차순)
+    """
+    h_img, w_img = image.shape[:2]
+    ref = area_ref if area_ref is not None else (h_img * w_img)
+    ratio = min_area_ratio if min_area_ratio is not None else MIN_BAR_AREA_RATIO
+    min_area = ratio * ref
+    min_hole_area = MIN_HOLE_AREA_RATIO * ref
+
+    contours, hierarchy = _threshold_and_contours(image)
+    if hierarchy is None or not contours:
+        return []
+
+    top_level = [(i, cnt) for i, cnt in enumerate(contours) if hierarchy[i][3] == -1]
+    top_level = [(i, cnt) for i, cnt in top_level if cv2.contourArea(cnt) >= min_area]
+    top_level.sort(key=lambda ic: -cv2.contourArea(ic[1]))
+    return [(cnt, _child_holes(contours, hierarchy, i, min_hole_area)) for i, cnt in top_level]
 
 
 def estimate_mother_angle(hole_centroids):

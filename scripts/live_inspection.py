@@ -9,7 +9,11 @@
   - yolo: ultralytics YOLO(detect task), rtdetr와 같은 AABB 출력이라 같은 어댑터를 쓴다.
   - yolo-obb: ultralytics YOLO(obb task, CLAUDE.md 확정 메인 파이프라인). 결과에 각도가
     이미 있어서 영상에서 각도를 복원할 필요가 없다 (detection_adapter.from_ultralytics).
---weights를 생략하면 --model-type별 기본 경로를 쓴다 (아래 DEFAULT_WEIGHTS).
+  - rule_based: 학습된 모델이 아예 없음. src/vision/rule_based_adapter.py가 classical
+    CV(색상+구멍 개수)만으로 개별 부품을 찾는다. --weights 불필요. 부품이 서로 떨어진
+    재료 섹션(오피킹 검출)에서 잘 맞고, 조립 섹션에서 볼트가 이미 꽂힌 부품은 정확도가
+    떨어질 수 있다(모듈 docstring의 "한계" 참고).
+--weights를 생략하면 --model-type별 기본 경로를 쓴다 (아래 DEFAULT_WEIGHTS, rule_based는 불필요).
 
 ⚠️ 원래 엔진(config/mvp.json)은 (1) mother가 ±15° 넘게 기울면 거부하고 (2) 세로 부품이 mother
    "위쪽"으로만 붙는다고 가정하고 (3) H1을 화면 왼쪽으로 고정해서, 조립체를 다른 방향으로
@@ -24,6 +28,7 @@
     python -m scripts.live_inspection --video 1.mp4 --recipe 3 --save-video runs/inspection_demo.mp4 --no-window
     python -m scripts.live_inspection --model-type yolo-obb --camera 1 --recipe 3
     python -m scripts.live_inspection --model-type yolo --weights runs/yolo/best.pt --camera 1
+    python -m scripts.live_inspection --model-type rule_based --camera 1 --recipe 3
 
 키: [1/2/3] 레시피 선택(초기화)  [n] 새 제품(초기화)  [q] 종료
 """
@@ -50,9 +55,10 @@ from src.app.inspection_service import InspectionService  # noqa: E402
 from src.process.recipe import load_recipe  # noqa: E402
 from src.vision.detection_adapter import from_ultralytics  # noqa: E402
 from src.vision.rtdetr_adapter import RTDETRAdapter  # noqa: E402
+from src.vision.rule_based_adapter import RuleBasedAdapter  # noqa: E402
 
 # --weights를 생략했을 때 --model-type별 기본 가중치. yolo는 저장소에 학습된 기본값이 없어
-# None -> 필수 인자로 취급한다.
+# None -> 필수 인자로 취급한다. rule_based는 모델이 아예 없어 이 표에 없음(무조건 불필요).
 DEFAULT_WEIGHTS = {
     "rtdetr": ROOT / "runs/rtdetr/full_run/weights/best.pt",
     "yolo": None,
@@ -80,9 +86,10 @@ def main():
 
     parser = argparse.ArgumentParser(description="RT-DETR 기반 라이브 조립 검사")
     parser.add_argument("--recipe", type=int, choices=[1, 2, 3], default=1)
-    parser.add_argument("--model-type", choices=["rtdetr", "yolo", "yolo-obb"], default="rtdetr",
+    parser.add_argument("--model-type", choices=["rtdetr", "yolo", "yolo-obb", "rule_based"], default="rtdetr",
                         help="검출 모델 종류 (기본 rtdetr). yolo-obb는 각도가 결과에 이미 있어 "
-                             "영상에서 mother 각도를 복원하지 않는다")
+                             "영상에서 mother 각도를 복원하지 않는다. rule_based는 학습된 모델 "
+                             "없이 classical CV로 검출한다(--weights 불필요)")
     parser.add_argument("--weights", default=None, help="생략하면 --model-type 기본 경로 사용")
     parser.add_argument("--conf", type=float, default=None, help="생략하면 config의 confidence_threshold")
     parser.add_argument("--config", type=Path, default=ROOT / "config/rtdetr_live.json",
@@ -102,20 +109,27 @@ def main():
     parser.add_argument("--max-frames", type=int, default=0, help="0이면 끝까지")
     args = parser.parse_args()
 
-    weights = Path(args.weights) if args.weights else DEFAULT_WEIGHTS[args.model_type]
-    if weights is None:
-        parser.error(f"--model-type {args.model_type}는 저장소에 기본 가중치가 없습니다. --weights로 지정하세요.")
+    is_rule_based = args.model_type == "rule_based"
+    model, weights = None, None
+    if not is_rule_based:
+        weights = Path(args.weights) if args.weights else DEFAULT_WEIGHTS[args.model_type]
+        if weights is None:
+            parser.error(f"--model-type {args.model_type}는 저장소에 기본 가중치가 없습니다. --weights로 지정하세요.")
 
     config = load_config(args.config)
     recipes = {n: load_recipe(ROOT / f"config/recipes/recipe_{n}.json") for n in (1, 2, 3)}
     service = InspectionService(config, recipes[args.recipe])
-    # yolo-obb는 결과에 각도가 이미 있어 rtdetr_adapter(영상에서 각도 복원)가 필요 없다.
-    adapter = None if args.model_type == "yolo-obb" else RTDETRAdapter()
+    # yolo-obb는 결과에 각도가 이미 있어 rtdetr_adapter(영상에서 각도 복원)가 필요 없고,
+    # rule_based는 아예 자체 어댑터(모델 result 없이 frame만 받음)를 쓴다.
+    adapter = RuleBasedAdapter() if is_rule_based else (None if args.model_type == "yolo-obb" else RTDETRAdapter())
     hud = Hud(config)
     conf = args.conf if args.conf is not None else config["confidence_threshold"]
 
-    print(f"[INSPECT] 모델 로드 ({args.model_type}): {weights}", flush=True)
-    model = RTDETR(str(weights)) if args.model_type == "rtdetr" else YOLO(str(weights))
+    if is_rule_based:
+        print("[INSPECT] 모델 없음 (rule_based: classical CV로 검출)", flush=True)
+    else:
+        print(f"[INSPECT] 모델 로드 ({args.model_type}): {weights}", flush=True)
+        model = RTDETR(str(weights)) if args.model_type == "rtdetr" else YOLO(str(weights))
 
     is_video = args.video is not None
     cap = cv2.VideoCapture(str(args.video)) if is_video else open_camera(args)
@@ -123,9 +137,10 @@ def main():
         print(f"[INSPECT] 입력을 열 수 없습니다: {args.video if is_video else args.camera}", flush=True)
         return
     video_fps = (cap.get(cv2.CAP_PROP_FPS) or 30.0) if is_video else 15.0
-    # 첫 추론은 CUDA 초기화로 수 초가 걸려서, 그대로 두면 시작 직후 FRAME_GAP(250ms 초과)으로
-    # 판정이 한 번 끊긴다 — 타임스탬프를 재기 전에 미리 한 번 돌려둔다.
-    model.predict(np.zeros((args.height, args.width, 3), np.uint8), conf=conf, verbose=False)
+    if model is not None:
+        # 첫 추론은 CUDA 초기화로 수 초가 걸려서, 그대로 두면 시작 직후 FRAME_GAP(250ms 초과)으로
+        # 판정이 한 번 끊긴다 — 타임스탬프를 재기 전에 미리 한 번 돌려둔다.
+        model.predict(np.zeros((args.height, args.width, 3), np.uint8), conf=conf, verbose=False)
     print(f"[INSPECT] 시작 — {service.recipe.recipe_id}, 'q' 종료 / [1/2/3] 레시피 / [n] 새 제품", flush=True)
 
     writer = None
@@ -139,15 +154,18 @@ def main():
             frame = remove_droidcam_watermark(frame)
 
         timestamp_ms = frame_index / video_fps * 1000.0 if is_video else (time.monotonic() - started) * 1000.0
-        result = model.predict(frame, conf=conf, verbose=False)[0]
-        if adapter is not None:
-            detection_frame, info = adapter.convert(result, frame, timestamp_ms)
+        if is_rule_based:
+            detection_frame, info = adapter.convert(frame, timestamp_ms)
         else:
-            detection_frame = from_ultralytics(result, frame_index, timestamp_ms)
-            mother = next((d for d in detection_frame.detections if d.class_name == "mother_part"), None)
-            info = {"angle_source": "obb", "raw_boxes": len(detection_frame.detections),
-                    "after_dedup": len(detection_frame.detections),
-                    "mother_angle_deg": math.degrees(mother.angle_rad) if mother else None}
+            result = model.predict(frame, conf=conf, verbose=False)[0]
+            if adapter is not None:
+                detection_frame, info = adapter.convert(result, frame, timestamp_ms)
+            else:
+                detection_frame = from_ultralytics(result, frame_index, timestamp_ms)
+                mother = next((d for d in detection_frame.detections if d.class_name == "mother_part"), None)
+                info = {"angle_source": "obb", "raw_boxes": len(detection_frame.detections),
+                        "after_dedup": len(detection_frame.detections),
+                        "mother_angle_deg": math.degrees(mother.angle_rad) if mother else None}
         snapshot = service.update(detection_frame)
 
         now = time.monotonic()
