@@ -255,5 +255,25 @@ scenario("after 작업 완료 the removal card holds until the table is clear", 
   check("new product → normal materials check", text().includes("재료 준비") && !text().includes("완성품 반출") && !table._html.includes("대기"), text().slice(0, 300));
 });
 
+// 12. 재료 표 색 (0928c): 가져올 것 = 주황 → 놓이면 초록 ✓ · 안 쓰는 것(필요 0 · 있음 0) = 회색 '안 씀' (초록 ✓ 이면 앞 레시피 확인이 남은 것처럼 보였다)
+//     필요한 줄이 위, 안 쓰는 줄은 아래. 안 쓰는 재료가 놓이면 그 줄만 빨간 '치우기'.
+scenario("materials table: bring = orange, placed = green, unused = grey", () => {
+  const MAT = { phase: "CHECK_MATERIALS", evaluated_phase: "CHECK_MATERIALS" };
+  const NEED3 = { mother_part: 1, bolt_1: 0, bolt_2: 1, part_2hole: 0, part_3hole: 1 };      // recipe_3 모양: 주황 볼트 + 3구 파트
+  const mats = (observed) => ({ ...MAT, materials: { expected: NEED3, observed } });
+  const none = { mother_part: 0, bolt_1: 0, bolt_2: 0, part_2hole: 0, part_3hole: 0 };
+  for (let i = 0; i < 5; i++) feed({ candidate: { status: "IN_PROGRESS", issues: [] }, extra: mats(none) });
+  const t = table._html, at = (name) => t.indexOf(name);
+  check("no green ✓ row before anything is placed", !t.includes('<td class="st">✓</td>') && !t.includes('class="ok"'), t);
+  check("rows to bring are orange", (t.match(/class="need"/g) || []).length === 3 && !t.includes('class="wait"'), t);
+  check("card chips to bring are orange too", verdict._html.includes("chip need") && !verdict._html.includes("chip wait"), verdict._html.slice(0, 400));
+  check("unused rows are grey 안 씀", (t.match(/class="skip"/g) || []).length === 2 && (t.match(/안 씀/g) || []).length === 2, t);
+  check("needed rows come first", at("Mother (5구)") < at("주황 볼트") && at("주황 볼트") < at("3구 파트") && at("3구 파트") < at("노란 볼트") && at("3구 파트") < at("2구 파트"), t);
+  check("note says orange rows turn green", t.includes("주황 줄이 전부 초록") && !t.includes("다섯 줄"));
+  for (let i = 0; i < 20; i++) feed({ candidate: { status: "NG", issues: [] }, extra: mats({ ...none, mother_part: 1, bolt_1: 1 }) });
+  check("an unused material on the table → red 치우기", table._html.includes("치우기 (이 레시피엔 없음)") && (table._html.match(/class="skip"/g) || []).length === 1, table._html);
+  check("placed needed material → green ✓, the rest stay orange", (table._html.match(/class="ok"/g) || []).length === 1 && (table._html.match(/class="need"/g) || []).length === 2, table._html);
+});
+
 console.log(`\n${passed} checks passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

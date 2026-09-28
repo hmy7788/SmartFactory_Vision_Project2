@@ -3,7 +3,7 @@
   --bg: #EEF1F6; --card: #FFFFFF; --line: #D8DCE6; --ink: #14161A; --muted: #6B7480;
   --navy: #1B3C8C; --navy-2: #12275C; --blue: #3060D8; --soft: #D6E2FA;
   --ok: #15803D; --ok-bg: #E8F6EC; --ng: #C81E1E; --ng-bg: #FDECEC;
-  --hold: #9A6B12; --hold-bg: #FFF4E0; --wait: #4C8DFF; --wait-bg: #EAF1FF; --skip: #8A94A3;
+  --hold: #9A6B12; --hold-bg: #FFF4E0; --wait: #4C8DFF; --wait-bg: #EAF1FF; --skip: #8A94A3; --need: #C2410C; --need-bg: #FFF1E5;
   --screen: #15181D; --sb: 104px; --hd: 76px;
   --b100: #D6E2FA; --b200: #B9CDF5; --b300: #93B0EE; --b400: #6C8CE0; --b500: #3060D8; --b600: #1B3C8C;
 }
@@ -28,6 +28,7 @@ button { font: inherit; cursor: pointer; }
 #header { position: fixed; left: var(--sb); right: 0; top: 0; height: var(--hd); background: var(--navy); color: #fff;
   display: flex; align-items: center; gap: 18px; padding: 0 28px; z-index: 9; }
 #header .title { font-size: 24px; font-weight: 700; white-space: nowrap; }
+#header > .title { letter-spacing: 3px; }   /* 제품 이름 AEGIS (0928c) — 탭 제목(.title) 은 header-mid 안이라 해당 없음 */
 #header .sep { width: 2px; height: 32px; background: #4A63A8; }
 #header .spacer { flex: 1; }
 #header .clock { font-size: 20px; color: #C3D0EC; }
@@ -85,6 +86,8 @@ table.t td:last-child { border-right: 1px solid var(--line); border-radius: 0 7p
 table.t tr.ok td { background: var(--ok-bg); border-color: #B5DEC1; } table.t tr.ok td.st { color: var(--ok); }
 table.t tr.ng td { background: var(--ng-bg); } table.t tr.ng td.st, table.t tr.ng td.now { color: var(--ng); }
 table.t tr.wait td.st { color: var(--wait); }
+/* 재료 표 (0928c): 가져올 것 = 주황 → 다 놓이면 초록(.ok) · 안 쓰는 것 = 회색(.skip) · 치울 것 = 빨강(.ng) */
+table.t tr.need td { background: var(--need-bg); border-color: #F6C39A; } table.t tr.need td.st { color: var(--need); }
 table.t tr.hold td { background: var(--hold-bg); } table.t tr.hold td.st { color: var(--hold); }
 table.t tr.skip td { color: var(--muted); } table.t tr.skip td.st { color: var(--skip); }
 table.t tr.sel td { background: var(--soft); border-color: var(--blue); }
@@ -94,7 +97,7 @@ table.t tr.click { cursor: pointer; }
 .chip.part { color: var(--ink); background: #EEF0F4; }
 .chip.lg { height: 56px; padding: 0 22px; font-size: 24px; border-radius: 28px; }
 .chip.ok { color: var(--ok); background: var(--ok-bg); } .chip.ng { color: var(--ng); background: var(--ng-bg); }
-.chip.wait { color: var(--wait); background: var(--wait-bg); } .chip.hold { color: var(--hold); background: var(--hold-bg); }
+.chip.wait { color: var(--wait); background: var(--wait-bg); } .chip.need { color: var(--need); background: var(--need-bg); } .chip.hold { color: var(--hold); background: var(--hold-bg); }
 .chip.muted { color: var(--muted); background: #fff; font-weight: 400; }
 
 /* ── 판정 카드 ── */

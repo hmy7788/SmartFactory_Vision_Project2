@@ -72,7 +72,7 @@ function human(i) {
 //   GEOM_KEEP_MS   보류 중 영상 위 H 링을 마지막 위치에 이 시간까지 유지 (손이 지나갈 때 링이 사라졌다 나타나지 않게. 더 길면 Mother 가 움직였을 수 있어 지운다)
 //   HOLD_HINT_MS   작업자가 고쳐야 하는 보류(Mother 기울어짐·두 개·안 보임·카메라) 가 이 시간 넘게 이어질 때만 판정 카드 맨 아래에 한 줄 안내
 const UI = { MAT_WINDOW_MS: 700, GEOM_KEEP_MS: 1500, HOLD_HINT_MS: 3000 };
-const UI_VERSION = "화면 0928b · MES";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
+const UI_VERSION = "화면 0928c · MES";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
 const S = { view: "work", p: null, prev: null, rings: null, obs: null, geom: null, shown: null, matHist: [], matView: null, holdSince: null, holdHint: null,
             candKey: null, candSince: null, keys: {},
             sub: "live", period: 7, events: [], hist: null, sel: null, ana: null, diag: null, recipes: null };
@@ -296,13 +296,18 @@ function tableMaterials(p) {
     return `<h3>재료 확인 <span class="note">완성품을 치우면 새로 셉니다</span></h3>
     <table class="t"><tr><th>종류</th><th>필요</th><th>있음</th><th>상태</th></tr>${rows}</table>`;
   }
-  const rows = CLASS_ORDER.map((c) => {
+  // 색 (09-28 시연 뒤): 가져올 것 = 주황 → 다 놓이면 초록 ✓ · 이 레시피에 안 쓰는 것 = 회색 '안 씀' · 더 있거나 안 쓰는 게 놓이면 빨강 '치우기'.
+  // 안 쓰는 재료(필요 0 · 있음 0) 를 초록 ✓ 로 칠하면 앞 레시피에서 확인한 게 남은 것처럼 보였다.
+  // 필요한 재료를 위에, 안 쓰는 재료를 아래에 (레시피가 정하는 순서라 제품 도중엔 줄이 움직이지 않는다).
+  const order = [...CLASS_ORDER.filter((c) => (e[c] ?? 0) > 0), ...CLASS_ORDER.filter((c) => !(e[c] ?? 0))];
+  const rows = order.map((c) => {
     const ex = e[c] ?? 0, ob = o[c] ?? 0;
+    if (!ex && !ob) return `<tr class="skip"><td>${NAME[c]}</td><td class="mono">—</td><td class="mono">—</td><td class="st">안 씀</td></tr>`;
     let cls = "ok", st = "✓";
-    if (ob < ex) { cls = "wait"; st = `${ex - ob}개 더`; } else if (ob > ex) { cls = "ng"; st = ex ? `${ob - ex}개 치우기` : "치우기 (이 레시피엔 없음)"; }
+    if (ob < ex) { cls = "need"; st = `${ex - ob}개 더`; } else if (ob > ex) { cls = "ng"; st = ex ? `${ob - ex}개 치우기` : "치우기 (이 레시피엔 없음)"; }
     return `<tr class="${cls}"><td>${NAME[c]}</td><td class="mono">${ex}</td><td class="mono ${cls === "ok" ? "" : "st"}">${ob}</td><td class="st">${st}</td></tr>`;
   }).join("");
-  return `<h3>재료 확인 <span class="note">다섯 줄이 전부 ✓ 가 되면 조립이 시작됩니다</span></h3>
+  return `<h3>재료 확인 <span class="note">주황 줄이 전부 초록 ✓ 가 되면 조립이 시작됩니다</span></h3>
     <table class="t"><tr><th>종류</th><th>필요</th><th>있음</th><th>상태</th></tr>${rows}</table>`;
 }
 function tableHoles(p) {
@@ -349,8 +354,8 @@ function verdictCard(p) {
       if (remove.length) { cls = "NG"; big = "치우세요"; sub = `${SHORT[remove[0]]} ${n(remove[0])}개${remove.length > 1 ? ` 외 ${remove.length - 1}종` : ""}`; }
       else { cls = "IN_PROGRESS"; big = "재료 준비"; sub = `${SHORT[add[0]]} ${n(add[0])}개 더 놓으세요`; }
       body = (remove.length ? `<div class="label">치우기</div>${remove.map((c) => chip("ng", `${SHORT[c]}  × ${n(c)}`, "lg")).join("")}` : "")
-           + (add.length ? `<div class="label">더 놓기</div>${add.map((c) => chip("wait", `${SHORT[c]}  × ${n(c)}`, "lg")).join("")}` : "");
-      hint = "왼쪽 표의 다섯 줄이 전부 ✓ 가 되면 자동으로 넘어갑니다. 누를 것 없습니다.";
+           + (add.length ? `<div class="label">더 놓기</div>${add.map((c) => chip("need", `${SHORT[c]}  × ${n(c)}`, "lg")).join("")}` : "");
+      hint = "왼쪽 표의 주황 줄이 전부 초록 ✓ 가 되면 자동으로 넘어갑니다. 누를 것 없습니다.";
     }
   } else {
     const st = shown ? shown.status : "IN_PROGRESS";   // 조립 단계에서 아직 확정이 없으면(시작 직후) 후보와 무관하게 '조립 중'
