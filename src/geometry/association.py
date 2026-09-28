@@ -7,11 +7,16 @@ def associate(detections, geometry, config):
     """No recipe-based candidate filtering. Multiple matches conservatively hold."""
     observed = {i: {"bolt": [], "part": []} for i in range(1, 6)}
     ambiguous, ignored = [], []
+    # Opt-in (config "allow_parts_below"): tracks which Mother-local side each matched part
+    # actually came from, so a physically-impossible mix (one part above, another below, in
+    # the same rigid planar assembly) can be caught below instead of silently passing.
+    part_sides = {}
     width = geometry["pose"]["width"]
     for d in detections:
         if d.class_name == "mother_part":
             continue
         slot = "bolt" if d.class_name.startswith("bolt_") else "part"
+        side_used = None
         if slot == "bolt":
             matches = [h for h, roi in geometry["bolt_rois"].items() if contains(roi, d.center_xy)]
             scores = {h: 1.0 for h in matches}
@@ -43,6 +48,7 @@ def associate(detections, geometry, config):
                 # Physically impossible for one part; hold rather than guess.
                 ambiguous.append(d.detection_id)
                 continue
+            side_used = "below" if below[2] else "above"
             scores, near, matches = below if below[2] else above
             if not matches and (above[1] or below[1]):
                 ambiguous.append(d.detection_id)
@@ -70,4 +76,15 @@ def associate(detections, geometry, config):
             observed[h][slot].append({"detection_id": d.detection_id, "class_name": d.class_name,
                                       "confidence": d.confidence, "overlap": scores[h],
                                       "orientation_ok": orientation_ok})
+            if slot == "part" and config.get("allow_parts_below"):
+                part_sides[d.detection_id] = side_used
+
+    if len(set(part_sides.values())) > 1:
+        # A single rigid, planar assembly can't have some parts above Mother and others
+        # below at the same time -- hold those parts rather than accept the impossible mix.
+        mixed_ids = set(part_sides)
+        ambiguous.extend(mixed_ids)
+        for slots in observed.values():
+            slots["part"] = [p for p in slots["part"] if p["detection_id"] not in mixed_ids]
+
     return observed, tuple(sorted(ambiguous)), tuple(sorted(ignored))

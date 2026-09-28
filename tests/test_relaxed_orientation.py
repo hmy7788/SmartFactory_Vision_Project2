@@ -61,6 +61,25 @@ def test_relaxed_config_still_accepts_part_above_mother():
     assert final_snapshot(RECIPE_3, RELAXED, scene(RECIPE_3, RELAXED)).status == Status.PASS
 
 
+def test_relaxed_config_rejects_parts_mixed_above_and_below():
+    """한 평면 구조물의 부품들은 물리적으로 전부 같은 쪽(위 또는 아래)에만 붙을 수 있다 —
+    RECIPE_1의 두 부품(H1, H4)을 일부러 서로 반대쪽에 두면, allow_parts_below가 개별 부품마다
+    독립적으로 위/아래를 허용하더라도 이 조합 자체는 걸러내야 한다."""
+    center, u, v = (640.0, 360.0), (1.0, 0.0), (0.0, 1.0)
+    detections = [OBBDetection("mother", "mother_part", 0.95, center, WIDTH, 100.0, 0.0)]
+    for i, (placement, side) in enumerate(zip(RECIPE_1.placements, (-1, 1))):
+        alpha = RELAXED["hole_alphas"][placement.mother_hole - 1]
+        point = (center[0] + alpha * WIDTH * u[0], center[1] + alpha * WIDTH * u[1])
+        spec = RELAXED["part_rois"][placement.part]
+        part_center = (point[0] + side * spec["offset_ratio"] * WIDTH * v[0],
+                       point[1] + side * spec["offset_ratio"] * WIDTH * v[1])
+        detections.append(OBBDetection(f"bolt{i}", placement.bolt, 0.9, point, 40.0, 40.0, 0.0))
+        detections.append(OBBDetection(f"part{i}", placement.part, 0.9, part_center,
+                                       spec["length_ratio"] * WIDTH, spec["width_ratio"] * WIDTH, math.pi / 2))
+    snapshot = final_snapshot(RECIPE_1, RELAXED, detections)
+    assert snapshot.status == Status.HOLD and "AMBIGUOUS_ASSOCIATION" in codes(snapshot)
+
+
 @pytest.mark.parametrize("recipe", [RECIPE_3, RECIPE_1])
 def test_relaxed_config_accepts_mirrored_hole_numbering(recipe):
     snapshot = final_snapshot(recipe, RELAXED, scene(recipe, RELAXED, mirrored=True))
