@@ -156,6 +156,23 @@ class CameraSourceTests(unittest.TestCase):
         self.assertTrue(frame.input_valid); self.assertEqual(frame.detections, ())
         self.assertIsNone(src.last_error)
 
+    def test_flip_horizontal_mirrors_the_frame_before_detection(self):
+        """카메라/드라이버가 좌우반전(미러)해서 줄 때 --flip-horizontal로 되돌릴 수 있어야 한다."""
+        img = _img(20, 10)
+        img[:, :5] = 255   # 왼쪽에 밝은 세로줄 — 반전되면 오른쪽으로 옮겨가야 정상
+        seen = {}
+
+        class RecordingModel:
+            def predict(self, im, **kw):
+                seen["img"] = im.copy()
+                return [_Result(_Obb([], [], []))]
+
+        src = CameraSource(capture=_Cap([img]), model=RecordingModel(), mapping_path=self.mapping,
+                           model_type="yolo-obb", flip_horizontal=True)
+        next(src.frames())
+        self.assertTrue((seen["img"][:, -5:] == 255).all(), "왼쪽 줄이 오른쪽으로 이동해야 함")
+        self.assertTrue((seen["img"][:, :5] == 0).all(), "원래 왼쪽 자리는 이제 검정이어야 함")
+
     def test_threaded_mode_streams_faster_than_the_model(self):
         """무거운 모델(추론 300ms)이어도 영상은 계속 나오고, 판정은 뒤늦게 붙는다."""
         result = _Result(_Obb([[600, 700, 1000, 160, 0]], [0], [0.9]))

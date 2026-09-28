@@ -107,6 +107,9 @@ def main():
     parser.add_argument("--exposure", default=None, help="셔터 속도 수동 고정(예: '1/20')")
     parser.add_argument("--droidcam-watermark", action="store_true",
                         help="DroidCam 무료 버전 워터마크 영역을 지우고 추론 (640x480 기준)")
+    parser.add_argument("--flip-horizontal", action="store_true",
+                        help="카메라 영상이 좌우반전(미러)돼서 나올 때 되돌린다. 코드가 뒤집는 게 아니라 "
+                             "카메라/드라이버가 원래 뒤집어서 주는 경우용 (워터마크 제거 뒤에 적용됨)")
     parser.add_argument("--video", type=Path, default=None, help="카메라 대신 영상 파일로 실행")
     parser.add_argument("--save-video", type=Path, default=None, help="HUD가 그려진 결과를 mp4로 저장")
     parser.add_argument("--no-window", action="store_true", help="창 없이 실행 (저장/콘솔 로그만)")
@@ -156,6 +159,8 @@ def main():
             break
         if args.droidcam_watermark:
             frame = remove_droidcam_watermark(frame)
+        if args.flip_horizontal:
+            frame = cv2.flip(frame, 1)
 
         timestamp_ms = frame_index / video_fps * 1000.0 if is_video else (time.monotonic() - started) * 1000.0
         if is_rule_based:

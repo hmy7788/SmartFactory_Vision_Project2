@@ -191,9 +191,10 @@ class CameraSource:
                  conf: float = 0.25, imgsz: int = 640, mapping_path: str | Path = "config/class_mapping.json",
                  capture=None, model=None, jpeg_quality: int = 80,
                  threaded: bool | None = None, max_fps: float = 20.0, video: str | None = None, loop: bool = True,
-                 video_end: str | None = None, model_type: str = "rtdetr"):
+                 video_end: str | None = None, model_type: str = "rtdetr", flip_horizontal: bool = False):
         self.index, self.frame_size = index, tuple(frame_size)
         self.model_type = model_type                    # rtdetr(기본) · yolo · yolo-obb · rule_based
+        self.flip_horizontal = flip_horizontal          # 카메라가 좌우반전(미러) 영상을 주면 True
         self.weights = weights                          # None = 모델 없이 영상만(--no-model). 기본 경로 결정은 web/server.py 몫
         # 8. 영상 파일 모드: 웹캠 대신 녹화한 조립 영상을 원래 속도로 재생하며 같은 판정을 돌린다.
         #    끝나면 video_end 대로: "hold" 마지막 장면을 계속 보여 준다 (카메라가 완성품을 계속 보는 것과 같다 —
@@ -354,6 +355,9 @@ class CameraSource:
                     self.last_error = "camera read failed"
                     yield DetectionFrame(self.frame_id, ts, (), input_valid=False), None
                     self._reopen(); continue
+                if self.flip_horizontal:                 # 카메라/드라이버가 좌우반전(미러)해서 주는 경우 되돌림
+                    import cv2
+                    img = cv2.flip(img, 1)
                 h, w = img.shape[:2]
                 if (w, h) != self.frame_size:            # 카메라가 요청한 해상도를 안 줄 수 있다 → 실제 크기로 (오버레이 좌표계)
                     self.frame_size = (w, h)

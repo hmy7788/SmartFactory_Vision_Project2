@@ -234,7 +234,7 @@ def build(args, preloaded=None) -> tuple[Starlette, Pipeline, Store, Hub]:
         factory = lambda recipe, cfg: CameraSource(args.camera, weights, frame_size=size, conf=args.conf,
                                                     imgsz=args.imgsz, mapping_path=mapping_path, model=net,
                                                     video=args.video, video_end=args.video_end,
-                                                    model_type=args.model_type)
+                                                    model_type=args.model_type, flip_horizontal=args.flip_horizontal)
         model = weights or ("rule_based" if is_rule_based else "camera-only")
     pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
     pipeline.model_label = model_label if args.source == "camera" else model   # 진단 탭 · 사이드바에 보이는 모델 이름
@@ -262,6 +262,8 @@ def parse(argv=None):
                    help="검출 방식 (scripts/live_inspection.py와 동일). rule_based는 모델·가중치가 필요 없음")
     p.add_argument("--class-map", default=None, help="클래스 이름 매핑 JSON (yolo-obb 전용). 기본: config/class_mapping.json")
     p.add_argument("--camera-size", default="1280x720", help="캡처 해상도 WxH. 카메라가 다른 값을 주면 실제 값으로 바꿔 쓴다")
+    p.add_argument("--flip-horizontal", action="store_true",
+                   help="카메라 영상이 좌우반전(미러)돼서 나올 때 되돌린다 (카메라/드라이버가 원래 뒤집어서 주는 경우용)")
     p.add_argument("--conf", type=float, default=0.25, help="모델 후보 임계 (판정 임계 0.5 는 config)")
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--no-model", action="store_true", help="가중치 없이 카메라 영상만 (구도·해상도 확인용). 판정은 전부 보류")
