@@ -1,0 +1,3 @@
+# Optional inference/debug dependencies, tested in this workspace.
+ultralytics==8.4.158
+Pillow==12.3.0

@@ -1,0 +1,21 @@
+{
+  "calibration_status": "RTDETR_LIVE_RELAXED_UNVALIDATED",
+  "confidence_threshold": 0.5,
+  "max_mother_angle_deg": 89.9,
+  "allow_parts_below": true,
+  "allow_mirrored_holes": true,
+  "hole_alphas": [-0.4, -0.2, 0.0, 0.2, 0.4],
+  "hole_beta": 0.0,
+  "bolt_half_width_ratio": 0.07,
+  "bolt_half_height_ratio": 0.5,
+  "part_rois": {
+    "part_2hole": {"width_ratio": 0.18, "length_ratio": 0.50, "offset_ratio": 0.18},
+    "part_3hole": {"width_ratio": 0.18, "length_ratio": 0.80, "offset_ratio": 0.33}
+  },
+  "part_overlap_threshold": 0.6,
+  "part_anchor_tolerance_ratio": 0.1,
+  "part_max_angle_deg": 20,
+  "stable_duration_ms": 400,
+  "material_stable_duration_ms": 1000,
+  "max_frame_gap_ms": 250
+}
