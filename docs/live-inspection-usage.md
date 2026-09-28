@@ -86,6 +86,7 @@ python -m scripts.live_inspection --video 1.mp4 --recipe 3 --save-video runs/ins
 | `--exposure` | (자동) | 셔터 속도 수동 고정, 예: `1/20` |
 | `--droidcam-watermark` | 꺼짐 | DroidCam 워터마크 제거 |
 | `--flip-horizontal` | 꺼짐 | 카메라 영상이 좌우반전(미러)돼서 나올 때 되돌림 (카메라/드라이버가 원래 뒤집어서 주는 경우 — 코드가 임의로 뒤집는 건 아님) |
+| `--flip-vertical` | 꺼짐 | 카메라가 상하 거꾸로(180도 돌려 설치 등) 영상을 줄 때 되돌림. `--flip-horizontal`과 같이 켜면 상하좌우 모두 뒤집힘 |
 | `--video` | (없음) | 카메라 대신 영상 파일 |
 | `--save-video` | (없음) | HUD 포함 결과를 mp4로 저장 |
 | `--no-window` | 꺼짐 | 창 없이 실행 (콘솔 로그/저장만) |
@@ -146,6 +147,7 @@ DroidCam은 `cv2.CAP_MSMF`로 같은 방식으로 확인. 화면을 저장해서
 | 화면이 검음 (DroidCam) | 폰 앱과 PC 클라이언트가 Start 상태인지 (연결 끊기면 검은 프레임) |
 | 배경이 회색으로 뜸 | `--exposure 1/20` (C270 자동노출이 밝은 부품 기준으로 전체를 밝게 보정함) |
 | 화면이 좌우반전(미러)돼서 나옴 | `--flip-horizontal` — 코드가 뒤집는 게 아니라 카메라/드라이버(노트북 내장캠 등)가 원래 뒤집어서 주는 경우가 흔함. 웹 UI는 `--flip-horizontal` 옵션 (`python -m web.server --source camera ...`) |
+| 화면이 상하로 거꾸로 나옴 | `--flip-vertical` (카메라를 180도 돌려 설치했거나 드라이버가 뒤집어 주는 경우). 웹 UI도 동일 옵션 |
 | 상태가 계속 `판정 대기` | 화면 문구 확인: `Mother가 보이지 않습니다`(mother 검출 실패), `프레임이 끊겼습니다`(처리 속도 부족) |
 | `어느 구멍인지 불명확합니다` | 부품을 mother 구멍에 정확히 맞춰 놓기, 손으로 가리고 있지 않은지 |
 | 각도가 `fallback`으로 나옴 | mother 구멍이 3개 이상 안 보임(손/볼트로 가림) → 각도를 0°로 가정 중 |

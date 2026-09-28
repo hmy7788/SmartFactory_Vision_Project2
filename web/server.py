@@ -234,7 +234,8 @@ def build(args, preloaded=None) -> tuple[Starlette, Pipeline, Store, Hub]:
         factory = lambda recipe, cfg: CameraSource(args.camera, weights, frame_size=size, conf=args.conf,
                                                     imgsz=args.imgsz, mapping_path=mapping_path, model=net,
                                                     video=args.video, video_end=args.video_end,
-                                                    model_type=args.model_type, flip_horizontal=args.flip_horizontal)
+                                                    model_type=args.model_type, flip_horizontal=args.flip_horizontal,
+                                                    flip_vertical=args.flip_vertical)
         model = weights or ("rule_based" if is_rule_based else "camera-only")
     pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
     pipeline.model_label = model_label if args.source == "camera" else model   # 진단 탭 · 사이드바에 보이는 모델 이름
@@ -264,6 +265,9 @@ def parse(argv=None):
     p.add_argument("--camera-size", default="1280x720", help="캡처 해상도 WxH. 카메라가 다른 값을 주면 실제 값으로 바꿔 쓴다")
     p.add_argument("--flip-horizontal", action="store_true",
                    help="카메라 영상이 좌우반전(미러)돼서 나올 때 되돌린다 (카메라/드라이버가 원래 뒤집어서 주는 경우용)")
+    p.add_argument("--flip-vertical", action="store_true",
+                   help="카메라가 상하 거꾸로(180도 돌려 설치 등) 영상을 줄 때 되돌린다. --flip-horizontal과 "
+                        "같이 켜면 상하좌우 모두 뒤집힘")
     p.add_argument("--conf", type=float, default=0.25, help="모델 후보 임계 (판정 임계 0.5 는 config)")
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--no-model", action="store_true", help="가중치 없이 카메라 영상만 (구도·해상도 확인용). 판정은 전부 보류")
