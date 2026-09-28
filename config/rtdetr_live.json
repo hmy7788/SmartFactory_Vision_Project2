@@ -2,7 +2,7 @@
   "calibration_status": "RTDETR_LIVE_RELAXED_UNVALIDATED",
   "confidence_threshold": 0.5,
   "max_mother_angle_deg": 89.9,
-  "allow_parts_below": true,
+  "allow_parts_below": false,
   "allow_mirrored_holes": true,
   "hole_alphas": [-0.4, -0.2, 0.0, 0.2, 0.4],
   "hole_beta": 0.0,

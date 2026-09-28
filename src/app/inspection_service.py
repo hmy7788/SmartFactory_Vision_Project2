@@ -56,9 +56,10 @@ class InspectionService:
                 candidate = Candidate(Status.HOLD)
             elif self.config.get("allow_mirrored_holes"):
                 # Opt-in: accept the assembly read from either end of the symmetric Mother.
-                candidate, mirrored = evaluate_symmetric(self.recipe, observed)
+                candidate, mirrored = evaluate_symmetric(self.recipe, observed, self.config)
             else:
-                candidate = evaluate(self.recipe, observed)
+                side = None if self.config.get("allow_parts_below") else "above"
+                candidate = evaluate(self.recipe, observed, side)
             if geometry:
                 geometry["hole_numbering"] = "mirrored" if mirrored else "direct"
         if reasons:

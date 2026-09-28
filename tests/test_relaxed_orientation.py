@@ -1,5 +1,7 @@
-"""config/rtdetr_live.json이 켜는 옵션(위/아래 부품, 좌우 뒤집힌 번호, 큰 각도)과
-기본 설정(config/mvp.json)의 원래 동작이 유지되는지 확인한다."""
+"""config/rtdetr_live.json이 켜는 옵션(좌우 뒤집힌 번호, 큰 각도)과, 부품은 반드시 Mother
+"위쪽"에만 달려야 한다(아래쪽=NG)는 기본 규칙, 그리고 진짜 180도 회전(번호가 뒤집히면서
+동시에 위/아래도 같이 뒤집히는 경우)만은 예외로 인정하는 evaluate_symmetric의 동작을 확인한다.
+"""
 import math
 
 import pytest
@@ -12,6 +14,7 @@ from src.process.recipe import Placement, Recipe, load_recipe
 
 DEFAULT = load_config("config/mvp.json")
 RELAXED = load_config("config/rtdetr_live.json")
+BELOW_OK = {**RELAXED, "allow_parts_below": True}   # 아래쪽 부품을 아예 허용하는 opt-in 플래그 단독 검증용
 RECIPE_3 = load_recipe("config/recipes/recipe_3.json")   # H2: bolt_2 + part_3hole
 RECIPE_1 = load_recipe("config/recipes/recipe_1.json")   # H1: bolt_1+part_2hole, H4: bolt_2+part_3hole
 WIDTH = 540.0
@@ -48,13 +51,17 @@ def codes(snapshot):
     return {issue.code for issue in snapshot.candidate.issues}
 
 
-def test_default_config_keeps_original_up_only_behavior():
-    snapshot = final_snapshot(RECIPE_3, DEFAULT, scene(RECIPE_3, DEFAULT, below=True))
-    assert snapshot.status == Status.HOLD and "AMBIGUOUS_ASSOCIATION" in codes(snapshot)
+@pytest.mark.parametrize("config", [DEFAULT, RELAXED])
+def test_part_below_mother_is_ng_by_default(config):
+    """부품이 Mother 아래쪽에 달리면(다른 부품/구멍번호는 정상), 각도·좌우뒤집힘 완화 여부와
+    무관하게 기본값에서는 NG다."""
+    snapshot = final_snapshot(RECIPE_3, config, scene(RECIPE_3, config, below=True))
+    assert snapshot.status == Status.NG and "PART_WRONG_SIDE" in codes(snapshot)
 
 
-def test_relaxed_config_accepts_part_below_mother():
-    assert final_snapshot(RECIPE_3, RELAXED, scene(RECIPE_3, RELAXED, below=True)).status == Status.PASS
+def test_allow_parts_below_flag_accepts_part_below_mother():
+    """opt-in(allow_parts_below=True)이면 회전 없이도 아래쪽 부착을 그대로 허용한다."""
+    assert final_snapshot(RECIPE_3, BELOW_OK, scene(RECIPE_3, BELOW_OK, below=True)).status == Status.PASS
 
 
 def test_relaxed_config_still_accepts_part_above_mother():
@@ -62,9 +69,9 @@ def test_relaxed_config_still_accepts_part_above_mother():
 
 
 def test_relaxed_config_rejects_parts_mixed_above_and_below():
-    """한 평면 구조물의 부품들은 물리적으로 전부 같은 쪽(위 또는 아래)에만 붙을 수 있다 —
-    RECIPE_1의 두 부품(H1, H4)을 일부러 서로 반대쪽에 두면, allow_parts_below가 개별 부품마다
-    독립적으로 위/아래를 허용하더라도 이 조합 자체는 걸러내야 한다."""
+    """한 평면 구조물의 부품들은 물리적으로 전부 같은 쪽에만 붙을 수 있다 — RECIPE_1의 두
+    부품(H1, H4)을 일부러 서로 반대쪽(하나는 위, 하나는 아래)에 두면, 둘 다 정확한 구멍
+    번호에 있어도 최소 한쪽은 PART_WRONG_SIDE로 NG여야 한다."""
     center, u, v = (640.0, 360.0), (1.0, 0.0), (0.0, 1.0)
     detections = [OBBDetection("mother", "mother_part", 0.95, center, WIDTH, 100.0, 0.0)]
     for i, (placement, side) in enumerate(zip(RECIPE_1.placements, (-1, 1))):
@@ -77,14 +84,25 @@ def test_relaxed_config_rejects_parts_mixed_above_and_below():
         detections.append(OBBDetection(f"part{i}", placement.part, 0.9, part_center,
                                        spec["length_ratio"] * WIDTH, spec["width_ratio"] * WIDTH, math.pi / 2))
     snapshot = final_snapshot(RECIPE_1, RELAXED, detections)
-    assert snapshot.status == Status.HOLD and "AMBIGUOUS_ASSOCIATION" in codes(snapshot)
+    assert snapshot.status == Status.NG and "PART_WRONG_SIDE" in codes(snapshot)
 
 
 @pytest.mark.parametrize("recipe", [RECIPE_3, RECIPE_1])
-def test_relaxed_config_accepts_mirrored_hole_numbering(recipe):
-    snapshot = final_snapshot(recipe, RELAXED, scene(recipe, RELAXED, mirrored=True))
+def test_180_degree_rotation_passes_by_default(recipe):
+    """진짜 180도 회전(전체가 한 덩어리로 돌아감)은 구멍 번호와 위/아래가 항상 같이
+    뒤집힌다 — allow_parts_below 없이도 evaluate_symmetric의 미러 가설이 이걸 그대로
+    인정해야 한다 (좌우만 뒤집히고 위/아래는 그대로인 경우와 구별해야 함, 아래 참고)."""
+    snapshot = final_snapshot(recipe, RELAXED, scene(recipe, RELAXED, mirrored=True, below=True))
     assert snapshot.status == Status.PASS
     assert snapshot.geometry["hole_numbering"] == "mirrored"
+
+
+def test_mirrored_numbering_without_side_flip_is_still_ng():
+    """구멍 번호만 뒤집히고 위/아래는 그대로인 조합(진짜 180도 회전이라면 불가능한 조합)은
+    미러 가설로도 구제되지 않는다 — evaluate_symmetric이 미러 가설엔 반드시 "아래쪽"까지
+    같이 요구하기 때문."""
+    snapshot = final_snapshot(RECIPE_3, RELAXED, scene(RECIPE_3, RELAXED, mirrored=True))
+    assert snapshot.status == Status.NG
 
 
 def test_default_config_rejects_mirrored_hole_numbering():
@@ -92,7 +110,7 @@ def test_default_config_rejects_mirrored_hole_numbering():
     assert snapshot.status == Status.NG
 
 
-def test_rotated_assembly_on_far_side_and_mirrored_passes():
+def test_rotated_assembly_at_an_angle_and_mirrored_passes():
     detections = scene(RECIPE_1, RELAXED, angle_deg=-40.0, below=True, mirrored=True)
     assert final_snapshot(RECIPE_1, RELAXED, detections).status == Status.PASS
 

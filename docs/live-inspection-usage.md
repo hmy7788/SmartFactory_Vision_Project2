@@ -118,12 +118,15 @@ python -m scripts.live_inspection --model-type rule_based --camera 1 --recipe 3
 
 | 파일 | 특징 |
 |---|---|
-| `config/rtdetr_live.json` (기본) | mother 각도 한계 89.9°, 세로 부품이 mother 아래쪽에 붙어도 인식(`allow_parts_below`), 좌우 뒤집힌 구멍 번호 허용(`allow_mirrored_holes`) |
-| `config/mvp.json` (팀원 원본) | 각도 ±15°, 부품은 mother 위쪽만, H1은 화면 왼쪽 고정 |
+| `config/rtdetr_live.json` (기본) | mother 각도 한계 89.9°, 좌우 뒤집힌 구멍 번호 허용(`allow_mirrored_holes`). 부품은 기본적으로 mother **위쪽에만** 달려야 함(`allow_parts_below: false`) — 아래쪽에 달리면 `PART_WRONG_SIDE`로 NG |
+| `config/mvp.json` (팀원 원본) | 각도 ±15°, 부품은 mother 위쪽만, H1은 화면 왼쪽 고정, 좌우 뒤집힘 불허 |
 
-- 정답을 아는 조립 사진 100장 기준 정상(PASS) 판정: `mvp.json` 61장 → `rtdetr_live.json` 98장
-- 다른 모델 레시피 / 구멍 위치만 틀린 레시피로 검사한 300건은 PASS 0건 (오통과 없음)
-- 수치는 학습에 쓴 사진 기준이라 실제 카메라에서는 더 낮을 수 있음
+- **예외**: 조립체 전체가 진짜 180도 회전한 경우(구멍 번호와 위/아래가 동시에 뒤집힌 경우)는
+  `allow_parts_below`가 꺼져 있어도 PASS로 인정한다 — `evaluate_symmetric`이 "구멍 번호를
+  반대로 읽으면서 동시에 아래쪽도 정답으로 보는" 미러 가설을 따로 시도하기 때문. 부품 하나만
+  반대쪽에 붙은 경우(진짜 조립 오류)와는 구별된다 (`tests/test_relaxed_orientation.py` 참고)
+- 부품이 항상 위/아래 어느 쪽이든(회전 여부와 무관하게) 허용돼야 하면 `--config`에
+  `allow_parts_below: true`를 켠 설정 파일을 만들어 쓰면 된다
 - 팀원 원래 동작이 필요하면 `--config config/mvp.json`
 
 ## 7. 문제 해결

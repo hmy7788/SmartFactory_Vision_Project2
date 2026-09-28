@@ -15,12 +15,15 @@
     떨어질 수 있다(모듈 docstring의 "한계" 참고).
 --weights를 생략하면 --model-type별 기본 경로를 쓴다 (아래 DEFAULT_WEIGHTS, rule_based는 불필요).
 
-⚠️ 원래 엔진(config/mvp.json)은 (1) mother가 ±15° 넘게 기울면 거부하고 (2) 세로 부품이 mother
-   "위쪽"으로만 붙는다고 가정하고 (3) H1을 화면 왼쪽으로 고정해서, 조립체를 다른 방향으로
-   놓으면 정상 조립도 실패한다 (정답을 아는 사진 100장 기준 PASS 61장, RT-DETR 어댑터 기준).
-   기본 설정인 config/rtdetr_live.json은 이 셋을 풀어서(각도 89.9°, allow_parts_below,
-   allow_mirrored_holes) 같은 100장에서 PASS 98장이 나온다 (다른 모델 레시피/틀린 구멍 위치
-   레시피로 검사한 300건은 PASS 0건). 팀원 원래 동작이 필요하면 --config config/mvp.json.
+⚠️ 원래 엔진(config/mvp.json)은 (1) mother가 ±15° 넘게 기울면 거부하고 (2) H1을 화면 왼쪽으로
+   고정해서, 조립체를 다른 방향으로 놓으면 정상 조립도 실패한다. 기본 설정인
+   config/rtdetr_live.json은 각도(89.9°)와 좌우 뒤집힘(allow_mirrored_holes)은 풀되, 부품은
+   반드시 Mother "위쪽"에만 달려야 한다 — 아래쪽에 달린 부품은 NG(PART_WRONG_SIDE)로 판정한다.
+   단, 조립체 전체가 진짜 180도 회전한 경우(구멍 번호와 위/아래가 동시에 뒤집힌 경우)는
+   evaluate_symmetric이 예외로 인정해 PASS시킨다 — 한 부품만 반대쪽에 붙은 경우와는 구별된다
+   (tests/test_relaxed_orientation.py 참고). 부품이 항상 위/아래 어느 쪽이든 허용되면 되는
+   경우 --config에 allow_parts_below:true를 켠 설정을 쓰면 된다. 팀원 원래 동작이 필요하면
+   --config config/mvp.json.
 
 사용법 (저장소 루트에서):
     python -m scripts.live_inspection --camera 3 --recipe 3
@@ -93,7 +96,8 @@ def main():
     parser.add_argument("--weights", default=None, help="생략하면 --model-type 기본 경로 사용")
     parser.add_argument("--conf", type=float, default=None, help="생략하면 config의 confidence_threshold")
     parser.add_argument("--config", type=Path, default=ROOT / "config/rtdetr_live.json",
-                        help="기본은 각도 제한을 풀고 위/아래 부품·좌우 뒤집힌 번호를 허용하는 라이브용 설정 "
+                        help="기본은 각도 제한을 풀고 좌우 뒤집힌 번호를 허용하되, 부품은 mother "
+                             "위쪽에만 달려야 하는 라이브용 설정(180도 전체 회전은 예외로 인정) "
                              "(팀원 원본은 config/mvp.json)")
     parser.add_argument("--camera", type=int, default=0)
     parser.add_argument("--backend", choices=["dshow", "msmf"], default="dshow",

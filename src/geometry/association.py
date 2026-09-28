@@ -7,16 +7,12 @@ def associate(detections, geometry, config):
     """No recipe-based candidate filtering. Multiple matches conservatively hold."""
     observed = {i: {"bolt": [], "part": []} for i in range(1, 6)}
     ambiguous, ignored = [], []
-    # Opt-in (config "allow_parts_below"): tracks which Mother-local side each matched part
-    # actually came from, so a physically-impossible mix (one part above, another below, in
-    # the same rigid planar assembly) can be caught below instead of silently passing.
-    part_sides = {}
     width = geometry["pose"]["width"]
     for d in detections:
         if d.class_name == "mother_part":
             continue
         slot = "bolt" if d.class_name.startswith("bolt_") else "part"
-        side_used = None
+        side = None
         if slot == "bolt":
             matches = [h for h, roi in geometry["bolt_rois"].items() if contains(roi, d.center_xy)]
             scores = {h: 1.0 for h in matches}
@@ -42,14 +38,22 @@ def associate(detections, geometry, config):
                 return side_scores, side_near, side_matches
 
             above = evaluate_side("part_rois", +1)
-            # Opt-in (config "allow_parts_below"): default keeps the original up-only behavior.
-            below = evaluate_side("part_rois_down", -1) if config.get("allow_parts_below") else (None, [], [])
+            # Both sides are always evaluated so a part below Mother is still anchored to a
+            # Hole and reported (not silently dropped) -- whether "below" is an acceptable
+            # final verdict is decided later, per hypothesis, in evaluate_symmetric: a genuine
+            # 180-degree rotation of the whole rigid assembly moves every part to the opposite
+            # side at once, which is different from one lone part hanging on the wrong side.
+            below = evaluate_side("part_rois_down", -1)
             if above[2] and below[2]:
                 # Physically impossible for one part; hold rather than guess.
                 ambiguous.append(d.detection_id)
                 continue
-            side_used = "below" if below[2] else "above"
-            scores, near, matches = below if below[2] else above
+            if below[2]:
+                scores, near, matches = below
+                side = "below"
+            else:
+                scores, near, matches = above
+                side = "above"
             if not matches and (above[1] or below[1]):
                 ambiguous.append(d.detection_id)
                 continue
@@ -75,16 +79,5 @@ def associate(detections, geometry, config):
                 orientation_ok = degrees(error) <= config["part_max_angle_deg"]
             observed[h][slot].append({"detection_id": d.detection_id, "class_name": d.class_name,
                                       "confidence": d.confidence, "overlap": scores[h],
-                                      "orientation_ok": orientation_ok})
-            if slot == "part" and config.get("allow_parts_below"):
-                part_sides[d.detection_id] = side_used
-
-    if len(set(part_sides.values())) > 1:
-        # A single rigid, planar assembly can't have some parts above Mother and others
-        # below at the same time -- hold those parts rather than accept the impossible mix.
-        mixed_ids = set(part_sides)
-        ambiguous.extend(mixed_ids)
-        for slots in observed.values():
-            slots["part"] = [p for p in slots["part"] if p["detection_id"] not in mixed_ids]
-
+                                      "orientation_ok": orientation_ok, "side": side})
     return observed, tuple(sorted(ambiguous)), tuple(sorted(ignored))
