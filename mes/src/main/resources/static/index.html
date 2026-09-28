@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MES 콘솔</title>
+<style>
+  :root { --bg:#EEF1F6; --card:#fff; --line:#D8DCE6; --ink:#14161A; --muted:#6B7480; --navy:#1B3C8C; --blue:#3060D8;
+          --ok:#15803D; --ok-bg:#E8F6EC; --ng:#C81E1E; --ng-bg:#FDECEC; --wait:#4C8DFF; --wait-bg:#EAF1FF; --hold:#9A6B12; --hold-bg:#FFF4E0; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif; font-size:15px; }
+  header { background:var(--navy); color:#fff; display:flex; align-items:center; gap:18px; padding:14px 24px; }
+  header h1 { margin:0; font-size:20px; }
+  header .conn { margin-left:auto; font-size:14px; color:#C3D0EC; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#E5484D; margin-right:6px; vertical-align:0; }
+  .dot.on { background:#5FD38D; }
+  main { display:grid; grid-template-columns: 380px 1fr; gap:18px; padding:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .card h2 { margin:0 0 12px; font-size:16px; color:var(--navy); display:flex; gap:10px; align-items:baseline; }
+  .card h2 small { color:var(--muted); font-weight:400; font-size:12px; margin-left:auto; }
+  .col { display:flex; flex-direction:column; gap:18px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, select { width:100%; height:36px; border:1px solid var(--line); border-radius:7px; padding:0 10px; font:inherit; }
+  button { height:36px; border-radius:7px; border:1px solid var(--blue); background:var(--blue); color:#fff; font:inherit; font-weight:700; padding:0 14px; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--ng); border-color:var(--ng); height:28px; font-size:13px; }
+  .msg { margin-top:10px; font-size:13px; min-height:18px; }
+  .msg.err { color:var(--ng); } .msg.ok { color:var(--ok); }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:12px; color:var(--muted); padding:6px 8px; border-bottom:1px solid var(--line); }
+  td { padding:8px; border-bottom:1px solid #EEF0F4; vertical-align:middle; }
+  tr.sel td { background:#F2F6FF; } tr.click { cursor:pointer; }
+  .mono { font-family: ui-monospace, Consolas, monospace; }
+  .chip { display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; font-weight:700; border:1px solid currentColor; }
+  .QUEUED { color:#5B6475; background:#F1F3F8; border-style:dashed; } .RELEASED { color:var(--hold); background:var(--hold-bg); }
+  .line { display:grid; grid-template-columns: 1fr 76px 30px; gap:6px; margin-bottom:6px; align-items:center; }
+  .line .n { position:relative; } .x { height:30px; width:30px; padding:0; background:#fff; color:var(--muted); border-color:var(--line); }
+  button.add { background:#fff; color:var(--blue); height:32px; font-size:13px; }
+  tr.queued td { color:#5B6475; } .IN_PROGRESS { color:var(--wait); background:var(--wait-bg); }
+  .COMPLETED { color:var(--ok); background:var(--ok-bg); } .CANCELLED, .REJECTED { color:var(--muted); background:#F4F6FA; }
+  .bar { width:120px; height:10px; background:#EEF1F6; border-radius:5px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:8px; }
+  .bar i { display:block; height:100%; background:var(--ok); }
+  .st { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #EEF0F4; }
+  .muted { color:var(--muted); font-size:13px; }
+  .ng { color:var(--ng); font-weight:700; }
+</style>
+</head>
+<body>
+<header><h1>MES 콘솔</h1><span class="muted" style="color:#C3D0EC">작업지시 발행 · 진행 · 실적</span><span class="conn" id="conn">…</span></header>
+<main>
+  <div class="col">
+    <div class="card">
+      <h2>작업지시 발행</h2>
+      <label>설비 (검사대)</label><input id="f-station" value="VIS-01">
+      <label>작업 순서 <span class="muted">— 위에서부터 차례로. 앞 줄 수량이 다 차면 다음 줄이 자동 발행</span></label>
+      <div id="f-lines"></div>
+      <button class="add" id="f-add">+ 줄 추가</button>
+      <div style="margin-top:14px"><button id="f-send">발행</button></div>
+      <div class="msg" id="f-msg"></div>
+    </div>
+    <div class="card"><h2>설비 <small>status 토픽 · 끊기면 브로커가 offline (LWT)</small></h2><div id="stations" class="muted">없음</div></div>
+  </div>
+  <div class="col">
+    <div class="card"><h2>작업지시 <small>수량의 정답은 MES — 중복 없는 result 개수</small></h2><div id="orders"></div></div>
+    <div class="card"><h2 id="r-title">실적</h2><div id="results" class="muted">작업지시를 누르면 제품별 실적</div></div>
+  </div>
+</main>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const t = (iso) => iso ? new Date(iso).toLocaleTimeString("ko-KR", { hour12: false }) : "—";
+  const get = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error((await r.json()).error || r.status); return r.json(); };
+  const post = async (u, body) => { const r = await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; };
+  let selected = null, recipeOptions = "";
+  const LABEL = { QUEUED: "대기", RELEASED: "발행", IN_PROGRESS: "진행 중", COMPLETED: "완료", CANCELLED: "취소", REJECTED: "거절" };
+
+  async function loadRecipes() {
+    const list = await get("/api/recipes");
+    recipeOptions = list.map((r) => `<option value="${esc(r.recipe_id)}|${r.version}">${esc(r.recipe_id)} v${r.version} — ${r.placements.map((p) => `H${p.mother_hole} ${p.bolt}/${p.part}`).join(", ")}</option>`).join("");
+    if (!$("#f-lines").children.length) addLine();
+    else $("#f-lines").querySelectorAll("select").forEach((sel) => { const v = sel.value; sel.innerHTML = recipeOptions; sel.value = v; });
+  }
+  function addLine(qty = 3) {
+    const div = document.createElement("div");
+    div.className = "line";
+    div.innerHTML = `<select>${recipeOptions}</select><input class="n" type="number" min="1" value="${qty}" title="수량"><button class="x" title="이 줄 빼기">×</button>`;
+    div.querySelector(".x").onclick = () => { if ($("#f-lines").children.length > 1) div.remove(); };
+    $("#f-lines").appendChild(div);
+  }
+  // 목록: 설비마다 진행 중 → 대기(순서대로) 를 위에, 끝난 것은 아래 최신순
+  function ordered(orders) {
+    const open = orders.filter((o) => o.status === "RELEASED" || o.status === "IN_PROGRESS" || o.status === "QUEUED")
+      .sort((a, b) => a.station_id.localeCompare(b.station_id) || (a.status === "QUEUED") - (b.status === "QUEUED") || a.work_order_id.localeCompare(b.work_order_id));
+    const rank = {};
+    open.forEach((o) => { if (o.status === "QUEUED") { rank[o.station_id] = (rank[o.station_id] || 0) + 1; o._q = rank[o.station_id]; } });
+    return [...open, ...orders.filter((o) => !open.includes(o))];
+  }
+  async function refresh() {
+    try {
+      const h = await get("/api/health");
+      $("#conn").innerHTML = `<span class="dot ${h.mqtt_connected ? "on" : ""}"></span>${h.mqtt_enabled ? (h.mqtt_connected ? "브로커 연결됨" : "브로커 연결 안 됨") : "MQTT 꺼짐"} · ${esc(h.broker)}`;
+      const [stations, orders] = await Promise.all([get("/api/stations"), get("/api/work-orders")]);
+      $("#stations").innerHTML = stations.length ? stations.map((s) => `<div class="st"><span><span class="dot ${s.state === "online" ? "on" : ""}"></span><b class="mono">${esc(s.station_id)}</b></span><span class="muted">${esc(s.state)} · ${t(s.updated_at)}</span></div>`).join("") : "아직 연결된 설비 없음";
+      $("#orders").innerHTML = orders.length ? `<table><tr><th>작업지시</th><th>설비</th><th>레시피</th><th>진행</th><th>상태</th><th>발행</th><th></th></tr>${ordered(orders).map((o) => `
+        <tr class="click ${o.work_order_id === selected ? "sel" : ""} ${o.status === "QUEUED" ? "queued" : ""}" data-id="${esc(o.work_order_id)}">
+          <td class="mono">${esc(o.work_order_id)}</td><td class="mono">${esc(o.station_id)}</td><td>${esc(o.recipe_id)} v${o.recipe_version}</td>
+          <td><span class="bar"><i style="width:${Math.min(100, (100 * o.done_qty) / o.quantity)}%"></i></span><b>${o.done_qty}/${o.quantity}</b></td>
+          <td><span class="chip ${o.status}" title="${o.status}">${LABEL[o.status] || o.status}${o._q ? ` ${o._q}` : ""}</span>${o.reason ? `<div class="muted">${esc(o.reason)}</div>` : ""}</td><td class="muted">${o.status === "QUEUED" ? "앞 작업 끝나면" : t(o.released_at)}</td>
+          <td>${["RELEASED", "IN_PROGRESS", "QUEUED"].includes(o.status) ? `<button class="ghost" data-cancel="${esc(o.work_order_id)}">취소</button>` : ""}</td></tr>`).join("")}</table>` : `<div class="muted">발행된 작업지시가 없습니다</div>`;
+      if (selected) await loadResults(selected);
+    } catch (e) { $("#conn").textContent = "서버 응답 없음: " + e.message; }
+  }
+  async function loadResults(id) {
+    const d = await get(`/api/work-orders/${encodeURIComponent(id)}`);
+    $("#r-title").innerHTML = `실적 <span class="mono">${esc(id)}</span> <small>제품 ${d.results.length}개 · 첫 시도 통과 ${d.results.filter((r) => r.first_pass).length}개</small>`;
+    $("#results").innerHTML = d.results.length ? `<table><tr><th>#</th><th>첫 시도</th><th>NG 이력</th><th>사이클</th><th>완료 시각</th><th>event_id</th></tr>${d.results.map((r) => `
+      <tr><td>${r.product_seq}</td><td>${r.first_pass ? "○" : `<span class="ng">✕ ${r.ng_count}회</span>`}</td><td class="mono">${esc(r.ng_codes) || "—"}</td>
+      <td>${r.cycle_ms != null ? (r.cycle_ms / 1000).toFixed(1) + "초" : "—"}</td><td class="muted">${t(r.occurred_at)}</td><td class="mono muted">${esc(r.event_id).slice(0, 8)}</td></tr>`).join("")}</table>` : "아직 실적 없음";
+  }
+  document.addEventListener("click", async (e) => {
+    const c = e.target.closest("[data-cancel]");
+    if (c) { e.stopPropagation(); try { await post(`/api/work-orders/${encodeURIComponent(c.dataset.cancel)}/cancel`); } catch (err) { alert(err.message); } refresh(); return; }
+    const row = e.target.closest("tr[data-id]");
+    if (row) { selected = row.dataset.id; refresh(); }
+  });
+  $("#f-add").onclick = () => addLine(1);
+  $("#f-send").onclick = async () => {
+    const msg = $("#f-msg");
+    const lines = [...$("#f-lines").children].map((d) => { const [recipe_id, v] = d.querySelector("select").value.split("|");
+      return { recipe_id, recipe_version: +v, quantity: +d.querySelector("input").value }; });
+    try {
+      const wos = await post("/api/work-orders/batch", { station_id: $("#f-station").value.trim(), lines });
+      msg.className = "msg ok";
+      msg.textContent = wos.map((w) => `${w.recipe_id}×${w.quantity} ${w.status === "QUEUED" ? "대기" : "발행"}`).join(" → ") + `  (${wos[0].station_id})`;
+      selected = wos[0].work_order_id;
+    } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
+    refresh();
+  };
+  loadRecipes().catch((e) => ($("#f-msg").textContent = e.message));
+  refresh(); setInterval(refresh, 1500);
+})();
+</script>
+</body>
+</html>

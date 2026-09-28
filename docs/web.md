@@ -236,7 +236,7 @@ run_live.cmd 는 `--imgsz 480` 으로 띄운다(640 대비 약 2배 빠름, 부�
 ## MES 연동 (`--mes-broker`) — 브랜치 yuseong/mes-mqtt
 
 `python -m web.server --video 영상.mp4 --mes-broker localhost:1883 --station VIS-01` (또는 `run_station_mes.cmd`).
-MQTT 로 MES(스프링부트 `pokayoke-mes`) 와 붙는다. 계약·규칙·이유는 [mes_mqtt.md](mes_mqtt.md).
+MQTT 로 MES(스프링부트, 이 저장소의 [`mes/`](../mes/README.md)) 와 붙는다. 계약·규칙·이유는 [mes/docs/mes_mqtt.md](../mes/docs/mes_mqtt.md).
 
 - 작업지시가 레시피·수량을 정한다: 헤더 드롭다운 대신 `작업지시 WO-… · recipe_2 v3 · 3/10`, `/api/recipe/*` 는 409, 레시피 탭 버튼 잠김
 - MES 가 내려준 레시피는 `data/mes/recipes/` 에 저장되고 같은 이름의 로컬 레시피(`config/recipes`) 를 덮는다

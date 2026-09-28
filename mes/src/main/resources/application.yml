@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: smartfactory-mes
+  datasource:
+    # 파일 DB (재시작해도 작업지시·실적 유지). 내용 보기: http://localhost:8080/h2-console  (JDBC URL 을 아래와 똑같이)
+    # mes2: 작업지시 상태에 QUEUED 를 더하면서 새 파일로. Hibernate 6 는 enum 칼럼에 CHECK(status in (...)) 제약을 만들고
+    #       ddl-auto=update 는 그 제약을 고치지 않는다 → 옛 파일(mes) 에 QUEUED 를 넣으면 제약 위반.
+    url: jdbc:h2:file:./data/mes2
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+mes:
+  mqtt:
+    enabled: true                 # false 면 브로커 없이 REST·DB 만 (발행은 로그로)
+    broker-uri: tcp://localhost:1883
+    client-id: mes-server         # 고정 — 브로커가 MES 세션(구독·못 받은 결과) 을 기억한다
+    topic-prefix: factory

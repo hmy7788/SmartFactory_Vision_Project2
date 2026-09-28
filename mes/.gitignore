@@ -1,0 +1,8 @@
+build/
+.gradle/
+out/
+.idea/
+*.iml
+data/
+mosquitto/data/
+mosquitto/log/

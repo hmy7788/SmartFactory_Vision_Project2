@@ -4,7 +4,7 @@ cd /d "%~dp0"
 chcp 65001 >nul
 set "PYTHONUTF8=1"
 rem  Station screen linked to the MES: the MES work order decides recipe and quantity, [Complete] reports each product.
-rem  Needs first: smartfactory-mes\run_broker.cmd (Mosquitto, port 1883) and smartfactory-mes\run_mes_light.cmd
+rem  Needs first: mes\run_broker.cmd (Mosquitto, port 1883) and mes\run_mes_light.cmd (MES, port 8080) - or run_mes_demo.cmd for all three
 rem  Usage: double-click = pick a .pt from model\ and a camera.  Drag a .pt (and/or a video) onto this file to use those.
 rem         RT-DETR is the default model type. For a YOLO-OBB weight add:  --model-type yolo-obb
 set "BROKER=localhost:1883"

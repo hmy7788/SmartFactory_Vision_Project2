@@ -1,0 +1,9 @@
+# 도커로 브로커만 띄울 때: docker compose up -d   (Mosquitto 를 따로 설치하지 않아도 됨)
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/data:/mosquitto/data      # 설정의 persistence_location(mosquitto/data/) 이 컨테이너 안에선 /mosquitto/data

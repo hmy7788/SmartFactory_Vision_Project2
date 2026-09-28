@@ -2,6 +2,27 @@
 
 이 브랜치는 **재료 준비 확인 → 자동 조립 시작 → Mother 기준 ROI 조립 검사**를 구현한다. 모델 추론·기하·Recipe·시간 안정화를 분리하여 모델 없이도 테스트할 수 있다.
 
+## AEGIS 시연 — 작업자 화면 + MES (브랜치 `yuseong/ui-mes`)
+
+MES 가 작업지시(레시피 × 수량, 여러 줄이면 순서대로)를 MQTT 로 내려 보내면, 검사대 화면이 그 레시피로 재료 확인 → 조립 검사를 하고
+[작업 완료] 마다 결과를 MES 로 올린다. 수량을 다 채우면 MES 가 대기열의 다음 작업지시를 자동으로 보낸다.
+
+| 폴더 | 내용 |
+|---|---|
+| `web/` | 작업자 화면 (FastAPI + HTML/JS) · MES 연동 `web/mes_link.py` |
+| `mes/` | MES 서버 (Spring Boot 3.5 · JPA/H2 · Paho MQTT) — [mes/README.md](mes/README.md) |
+| `src/` | 판정 코어 (재료 확인 → 조립 검사) |
+
+준비물: Python 3.10+ (`pip install -r requirements.txt`), Java 17+ (Temurin 21), [Mosquitto](https://mosquitto.org/download/) (Windows 설치판),
+RT-DETR 가중치 `model/best.pt` (용량 때문에 Git 에서 제외 — 팀 공유 드라이브에서 받아 넣는다).
+저장소는 **영문 경로**에 clone 한다 (MES 의 Gradle 이 한글 경로에서 실패한다).
+
+1. `run_mes_demo.cmd` 더블클릭 → MQTT 브로커 · MES 서버(`http://localhost:8080`, 첫 실행은 jar 빌드 1~2분) · 검사대 화면(`http://127.0.0.1:8000`)
+2. 카메라는 10초 안에 안 고르면 USB 웹캠(가장 큰 번호)으로 자동 선택
+3. MES 콘솔에서 작업지시 발행 → 검사대가 받아 진행. [작업 완료] 뒤에는 완성품을 작업대에서 치우거나 분해해야 다음 재료 확인이 시작된다
+
+자세한 내용: [MQTT 메시지](mes/docs/mes_mqtt.md) · [작업자 화면](docs/web.md) · [MES 서버](mes/README.md)
+
 ## 빠른 시작
 
 Python 3.11+, 저장소 루트에서 실행한다. 코어와 테스트는 외부 패키지가 필요 없다.
