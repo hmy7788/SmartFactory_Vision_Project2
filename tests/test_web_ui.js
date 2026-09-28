@@ -222,6 +222,9 @@ scenario("MES work order drives the header and waiting card", () => {
   check("broker down → red dot only, card unchanged", hmid._html.includes('class="wo off"') && text().includes("조립 중"));
   feed({ candidate: IN_PROGRESS, confirmed: IN_PROGRESS, stable: true, extra: mes({ ...WO, done: 10, status: "COMPLETED" }) });
   check("completed → 작업지시 완료 10/10", text().includes("작업지시 완료") && text().includes("10/10"), text().slice(0, 200));
+  const NEXT = [{ work_order_id: "WO-8", recipe_id: "recipe_2", quantity: 3 }, { work_order_id: "WO-9", recipe_id: "recipe_3", quantity: 1 }];
+  feed({ candidate: IN_PROGRESS, confirmed: IN_PROGRESS, stable: true, extra: mes({ ...WO, next: NEXT }) });
+  check("MES queue → header shows the next line", hmid._html.includes("다음 recipe_2 × 3") && hmid._html.includes("외 1건"), hmid._html);
 });
 
 console.log(`\n${passed} checks passed, ${failed} failed`);

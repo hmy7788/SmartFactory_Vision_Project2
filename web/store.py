@@ -123,6 +123,18 @@ class Store:
                       (run_id, recipe_id, int(started_ms), ts_utc or utc_now()))
         return cur.lastrowid
 
+    def discard_product(self, product_id: int) -> bool:
+        """열린 제품을 기록째 지운다 — 작업지시를 기다리던 빈 제품처럼 작업이 없었던 것. 이력에 '중단' 으로 남지 않게.
+        닫힌 제품(COMPLETED/ABANDONED) 은 지우지 않는다."""
+        with self._lock:
+            row = self._con.execute("SELECT result FROM products WHERE product_id=?", (product_id,)).fetchone()
+            if row is None or row[0] != "OPEN":
+                return False
+            self._con.execute("DELETE FROM event_issues WHERE event_id IN (SELECT event_id FROM events WHERE product_id=?)", (product_id,))
+            self._con.execute("DELETE FROM events WHERE product_id=?", (product_id,))
+            self._con.execute("DELETE FROM products WHERE product_id=?", (product_id,))
+            return True
+
     def close_product(self, product_id: int, closed_ms: int, result: str = "COMPLETED",
                       ts_utc: str | None = None) -> dict:
         """[작업 완료] → COMPLETED, [새 작업] → ABANDONED. 요약 컬럼을 여기서 한 번 계산한다."""

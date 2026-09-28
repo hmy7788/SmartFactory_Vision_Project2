@@ -110,6 +110,7 @@ table.t tr.click { cursor: pointer; }
 .wo b { font-family: ui-monospace, Consolas, monospace; font-size: 18px; }
 .wo .dot { width: 10px; height: 10px; border-radius: 50%; background: #5FD38D; display: inline-block; }
 .wo.off .dot { background: #E5484D; }
+.wo .next { color: #C9D6F2; font-size: 14px; border-left: 1px solid #4A63A8; padding-left: 10px; margin-left: 2px; }
 .verdict.WAIT { background: #F4F6FA; border-color: var(--skip); color: #4A5568; }
 #sidebar .ver { color: #5F74A8; font-size: 11px; margin-bottom: 10px; text-align: center; white-space: pre-line; word-break: break-all; padding: 0 4px; }
 .verdict.READY { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }

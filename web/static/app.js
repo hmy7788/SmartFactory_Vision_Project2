@@ -222,6 +222,13 @@ function render(shapeSame) {
 }
 
 // ── 헤더 ────────────────────────────────────────────────────
+// MES 대기열: 지금 작업지시 다음에 올 것 (MES 가 앞 것이 끝나면 자동으로 보낸다). 보여 주기만 한다
+function nextLine(wo) {
+  const next = (wo?.next || []).filter((n) => n.recipe_id);
+  if (!next.length) return "";
+  const first = `${esc(next[0].recipe_id)} × ${next[0].quantity}`;
+  return `<span class="next">다음 ${first}${next.length > 1 ? ` 외 ${next.length - 1}건` : ""}</span>`;
+}
 function renderHeaderWork(p) {
   const recipes = p?.recipes || [], cur = p?.recipe?.recipe_id || "";
   const phase = p?.phase || "CHECK_MATERIALS";
@@ -229,7 +236,7 @@ function renderHeaderWork(p) {
   // MES 연동이면 레시피를 고르는 드롭다운 대신 작업지시 줄 (레시피·수량은 MES 가 정한다)
   const left = mes
     ? `<div class="wo ${mes.connected ? "on" : "off"}" title="${mes.connected ? `MES 연결됨 · ${esc(mes.broker)}` : `MES 연결 끊김 — 결과는 모아 뒀다가 다시 연결되면 보냅니다 (${mes.pending}건 대기)`}">
-         <i class="dot"></i><span class="k">작업지시</span>${wo ? `<b>${esc(wo.work_order_id)}</b><span class="k">${esc(wo.recipe_id)} v${wo.recipe_version}</span><b>${wo.done}/${wo.quantity}</b>` : `<span class="k">없음</span>`}</div>`
+         <i class="dot"></i><span class="k">작업지시</span>${wo ? `<b>${esc(wo.work_order_id)}</b><span class="k">${esc(wo.recipe_id)} v${wo.recipe_version}</span><b>${wo.done}/${wo.quantity}</b>` : `<span class="k">없음</span>`}${nextLine(wo)}</div>`
     : `<div class="recipe-sel"><span>레시피</span><select id="recipe-select">${recipes.map((r) => `<option ${r === cur ? "selected" : ""}>${r}</option>`).join("")}</select></div>`;
   hmid.innerHTML = `
     ${left}
@@ -272,7 +279,7 @@ function renderWork(p) {
   if (k.verdict !== K.verdict) { K.verdict = k.verdict; const v = $("#verdict"); if (v) v.outerHTML = verdictCard(p); }
   updateLive(p); drawOverlay(p, false);
 }
-function videoNote(p) { return `${p.video_at_end ? chip("muted", "영상 끝 · 마지막 장면 유지 중") : ""}H1 은 화면 왼쪽 · 파트는 위·아래 어느 쪽이든`; }
+function videoNote(p) { return `${p.video_at_end ? chip("muted", "영상 끝 · 마지막 장면 유지 중") : ""}H1 은 화면 왼쪽 · 파트는 Mother 위쪽으로`; }   // 아래쪽은 PART_WRONG_SIDE (NG). 조립체를 통째로 180° 돌린 건 코어가 인정
 function videoCard(p, diag) {
   const [w, h] = p.frame_size || [1280, 720];
   const right = diag ? `<span class="note">${p.calibration_status === "UNVALIDATED_DEFAULTS" ? chip("hold", "ROI 미보정") : ""}${chip("wait", "오버레이 상세")}</span>`
@@ -317,7 +324,7 @@ function verdictCard(p) {
   const wo = p.mes?.work_order;
   if (p.mes && (!wo || wo.status !== "IN_PROGRESS")) {       // MES 연동: 진행 중인 작업지시가 없으면 대기
     cls = "WAIT";
-    if (wo?.status === "COMPLETED") { big = "작업지시 완료"; sub = `${wo.work_order_id} · ${wo.recipe_id} · ${wo.done}/${wo.quantity}`; }
+    if (wo?.status === "COMPLETED") { big = "작업지시 완료"; sub = `${wo.work_order_id} · ${wo.recipe_id} · ${wo.done}/${wo.quantity}` + ((wo.next || []).length ? ` → 다음 ${wo.next[0].recipe_id} × ${wo.next[0].quantity} 준비 중` : ""); }
     else { big = "대기"; sub = wo?.status === "CANCELLED" ? `${wo.work_order_id} 취소됨` : "작업지시를 기다리는 중"; }
     hint = "MES 에서 다음 작업지시가 오면 자동으로 시작합니다. 누를 것 없습니다.";
   } else if (mat) {

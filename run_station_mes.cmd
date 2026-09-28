@@ -3,52 +3,40 @@ title Poka-Yoke - STATION + MES (MQTT)  port 8000
 cd /d "%~dp0"
 chcp 65001 >nul
 set "PYTHONUTF8=1"
-set "PY=python"
-%PY% --version >nul 2>nul || set "PY=py"
-%PY% --version >nul 2>nul || goto :nopy
-rem  Usage: drag a video onto this file, or double-click and drag the video into the window when asked.
-rem  Needs: Mosquitto on this PC (port 1883) and the MES (smartfactory-mes\run_mes.cmd) running.
+rem  Station screen linked to the MES: the MES work order decides recipe and quantity, [Complete] reports each product.
+rem  Needs first: smartfactory-mes\run_broker.cmd (Mosquitto, port 1883) and smartfactory-mes\run_mes_light.cmd
+rem  Usage: double-click = pick a .pt from model\ and a camera.  Drag a .pt (and/or a video) onto this file to use those.
+rem         RT-DETR is the default model type. For a YOLO-OBB weight add:  --model-type yolo-obb
 set "BROKER=localhost:1883"
 set "STATION=VIS-01"
-%PY% -c "import paho.mqtt" 2>nul
-if errorlevel 1 goto :install
-:installed
-if not exist model\yolo_obb_parts.pt goto :nopt
-set "VID=%~1"
-if not "%VID%"=="" goto :havevid
-echo.
-echo Drag the ORIGINAL video file into this window and press Enter.
-echo Just press Enter to use the webcam instead.
-set /p VID="Video: "
-:havevid
-set "VID=%VID:"=%"
-echo Broker:  %BROKER%   Station: %STATION%   topics factory/%STATION%/...
-echo Browser: http://localhost:8000     Stop: Ctrl+C
-start "" http://localhost:8000
-if "%VID%"=="" goto :webcam
-if not exist "%VID%" goto :novid
-echo Video:   %VID%
-%PY% -m web.server --video "%VID%" --weights model\yolo_obb_parts.pt --imgsz 480 --mes-broker %BROKER% --station %STATION%
-goto :end
-:webcam
-%PY% -m web.server --source camera --camera 0 --weights model\yolo_obb_parts.pt --imgsz 480 --mes-broker %BROKER% --station %STATION%
-goto :end
-:install
-echo installing paho-mqtt ...
-%PY% -m pip install "paho-mqtt>=2.0"
+rem --- python: the GPU venv from the YOLO comparison if it has CUDA (RT-DETR is ~10x faster there), else the normal one
+set "PY=python"
+set "GPUPY=%USERPROFILE%\venv_yolo26\Scripts\python.exe"
+if not exist "%GPUPY%" goto :cpu
+"%GPUPY%" -c "import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" >nul 2>nul
+if errorlevel 1 goto :cpu
+set "PY=%GPUPY%"
+echo Using the GPU python: %PY%
+goto :deps
+:cpu
+%PY% --version >nul 2>nul || set "PY=py"
+%PY% --version >nul 2>nul || goto :nopy
+echo Using: %PY% (CPU)
+:deps
+"%PY%" -c "import ultralytics, cv2, fastapi, uvicorn, paho.mqtt" >nul 2>nul
+if not errorlevel 1 goto :run
+echo installing packages (first time only) ...
+"%PY%" -m pip install ultralytics opencv-python fastapi "uvicorn[standard]" "paho-mqtt>=2.0"
 if errorlevel 1 goto :fail
-goto :installed
-:novid
-echo === Video not found: %VID%
-goto :end
-:nopt
-echo === model\yolo_obb_parts.pt is missing.
+:run
+echo Broker: %BROKER%   Station: %STATION%   topics factory/%STATION%/...
+"%PY%" -m scripts.run_ui %* --mes-broker %BROKER% --station %STATION%
 goto :end
 :nopy
 echo === Python not found.
 goto :end
 :fail
-echo === install failed. Send the message above to Claude.
+echo === install failed - see the message above.
 :end
 echo.
 pause

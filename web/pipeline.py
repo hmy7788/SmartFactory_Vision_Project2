@@ -149,9 +149,14 @@ class Pipeline:
                 if self.product_id is not None:
                     self.store.close_product(self.product_id, ts, result="ABANDONED")
                 self.service.reset(); self.source.reset(self.recipe); self._new_product(ts)
-            elif cmd == "workorder":                   # MES 작업지시 적용(dict) / 취소(None). 열린 제품은 중단 처리
+            elif cmd == "workorder":                   # MES 작업지시 적용(dict) / 취소(None)
                 if self.product_id is not None:
-                    self.store.close_product(self.product_id, ts, result="ABANDONED")
+                    # 앞 작업지시가 없었거나 끝난 뒤면 열린 제품은 '작업지시 대기' 중이던 빈 것 → 지운다 (이력에 중단으로 안 남게).
+                    # 진행 중 취소(None) 는 작업하던 제품이므로 중단(ABANDONED) 으로 남긴다.
+                    if arg is not None and arg.get("replaced_status") != "IN_PROGRESS":
+                        self.store.discard_product(self.product_id)
+                    else:
+                        self.store.close_product(self.product_id, ts, result="ABANDONED")
                 if arg is not None:
                     self.refresh_recipes()
                     self.recipe = load_recipe(self.recipes[arg["recipe_id"]]["path"])

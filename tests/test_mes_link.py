@@ -13,9 +13,11 @@ RECIPE = {"recipe_id": "recipe_2", "version": 3,
                          {"mother_hole": 3, "bolt": "bolt_2", "part": "part_3hole"}]}
 
 
-def wo_msg(wid="WO-1", qty=2, recipe=RECIPE):
-    return json.dumps({"schema": "pokayoke/1", "work_order_id": wid, "station_id": "VIS-01",
-                       "recipe": recipe, "quantity": qty}).encode()
+def wo_msg(wid="WO-1", qty=2, recipe=RECIPE, next_=None):
+    msg = {"schema": "pokayoke/1", "work_order_id": wid, "station_id": "VIS-01", "recipe": recipe, "quantity": qty}
+    if next_ is not None:
+        msg["next"] = next_
+    return json.dumps(msg).encode()
 
 
 class FakeTransport:
@@ -134,6 +136,22 @@ class MesLinkTests(unittest.TestCase):
         self.t.connected = True
         self.assertEqual(again.flush(), 3)
 
+    def test_queue_from_mes_is_shown_and_refreshed_without_touching_progress(self):
+        q1 = [{"work_order_id": "WO-2", "recipe_id": "recipe_2", "quantity": 3}]
+        self.send(wo_msg(qty=2, next_=q1))
+        self.assertEqual(self.applied[-1]["replaced_status"], None)            # 앞에 작업지시 없었음
+        self.assertEqual(self.link.view()["work_order"]["next"], q1)
+        self.done(1)
+        q2 = q1 + [{"work_order_id": "WO-3", "recipe_id": "recipe_1", "quantity": 1}]
+        self.send(wo_msg(qty=2, next_=q2))                                      # 같은 작업지시 재전달 — 대기열만 바뀜
+        wo = self.link.view()["work_order"]
+        self.assertEqual((wo["done"], len(wo["next"])), (1, 2))
+        self.assertEqual(len(self.applied), 1)                                   # 다시 적용하지 않는다
+        self.done(1)                                                             # 수량 채움 → COMPLETED
+        self.send(wo_msg(wid="WO-2", qty=3, next_=[]))                           # MES 가 다음 줄을 보냄
+        self.assertEqual(self.applied[-1]["work_order_id"], "WO-2")
+        self.assertEqual(self.applied[-1]["replaced_status"], "COMPLETED")
+
     def test_parse_broker(self):
         self.assertEqual(parse_broker("localhost:1883"), ("localhost", 1883))
         self.assertEqual(parse_broker("mqtt://10.0.0.5"), ("10.0.0.5", 1883))
@@ -188,6 +206,12 @@ class PipelineWithMesTests(unittest.TestCase):
         self.assertEqual((result["work_order_id"], result["product_seq"], result["recipe_id"]), ("WO-1", 1, "recipe_3"))
         self.assertTrue(any(c.startswith("WRONG_") for c in result["ng_codes"]), result["ng_codes"])   # 데모 시나리오의 오조립 이력
         self.assertFalse(result["first_pass"])
+        # MES 대기열의 다음 줄이 오면 바로 그 레시피로 — 기다리던 빈 제품은 이력에 '중단' 으로 남지 않는다
+        self.link.on_message("factory/VIS-01/workorder", wo_msg(wid="WO-2", qty=2, recipe=dict(RECIPE, recipe_id="recipe_2")))
+        s = self.wait(lambda s: s["recipe"]["recipe_id"] == "recipe_2" and s["mes"]["work_order"]["work_order_id"] == "WO-2")
+        self.assertEqual(s["phase"], "CHECK_MATERIALS")
+        results = [h["result"] for h in self.store.history()]
+        self.assertEqual(results, ["COMPLETED"], results)
 
 
 if __name__ == "__main__":

@@ -110,10 +110,14 @@ class MesLink:
             self._ack("REJECTED", str(wo.get("work_order_id", "?")) if isinstance(wo, dict) else "?",
                       reason=f"BAD_MESSAGE: {type(error).__name__}: {error}")
             return
+        nxt = [{"work_order_id": str(n.get("work_order_id")), "recipe_id": str(n.get("recipe_id")), "quantity": int(n.get("quantity", 0))}
+               for n in (wo.get("next") or []) if isinstance(n, dict)]   # MES 대기열 (보여 주기용, 없어도 됨)
         with self._lock:
             cur = self.work_order
             if cur and cur["work_order_id"] == work_order_id:
-                return                              # 재연결 때 retained 재전달 — 진행 수량 그대로
+                cur["next"] = nxt                   # 같은 작업지시 재전달 — 진행 수량 그대로, 대기열 표시만 새로
+                self._save()
+                return
             if cur and cur["status"] == ACTIVE:
                 self._ack("REJECTED", work_order_id, reason=f"BUSY: {cur['work_order_id']} 진행 중 ({cur['done']}/{cur['quantity']})")
                 return
@@ -128,11 +132,12 @@ class MesLink:
             {"recipe_id": recipe_id, "version": version, "placements": placements, "source": "MES",
              "work_order_id": work_order_id}, ensure_ascii=False, indent=1), encoding="utf-8")
         with self._lock:
+            before = self.work_order["status"] if self.work_order else None   # 바뀌기 전: 없음 · COMPLETED · CANCELLED
             self.work_order = {"work_order_id": work_order_id, "recipe_id": recipe_id, "recipe_version": version,
-                               "quantity": quantity, "done": 0, "status": ACTIVE, "accepted_at": self.clock()}
+                               "quantity": quantity, "done": 0, "status": ACTIVE, "accepted_at": self.clock(), "next": nxt}
             self._save()
             self._ack("ACCEPTED", work_order_id)
-            wo_view = dict(self.work_order)
+            wo_view = dict(self.work_order, replaced_status=before)
         if self.on_work_order:
             self.on_work_order(wo_view)
 
