@@ -154,8 +154,12 @@ function ringsOf(p, c, force) {
 }
 function emptyRings(p) { return ringsOf(p, { issues: (p.recipe?.placements || []).map((pl) => ({ code: "MISSING_PART", hole_id: pl.mother_hole })) }); }   // 아직 아무것도 안 꽂힌 상태
 function obsNames(p) {   // 자리별로 붙은 것의 이름만 (좌표·확률은 프레임마다 흔들리므로 버린다)
+  // p.observed 는 영상에서 실제로 검출된 물리적 구멍 번호(카메라가 어느 쪽 끝을 봤는지에 따라 달라짐) 기준.
+  // 조립체를 180도 돌려 core가 반대쪽 끝에서 읽었으면(hole_numbering === "mirrored") 레시피 번호 h는
+  // 물리적으로 (6-h) 자리에 있다 — src/app/hud.py의 같은 보정과 동일 (Snapshot.observed는 relabel 안 됨).
+  const mirrored = p.geometry?.hole_numbering === "mirrored";
   const out = {};
-  for (let h = 1; h <= 5; h++) { const o = p.observed?.[String(h)]; out[h] = { bolt: o?.bolt?.[0]?.class_name || null, part: o?.part?.[0]?.class_name || null }; }
+  for (let h = 1; h <= 5; h++) { const o = p.observed?.[String(mirrored ? 6 - h : h)]; out[h] = { bolt: o?.bolt?.[0]?.class_name || null, part: o?.part?.[0]?.class_name || null }; }
   return out;
 }
 function holdCode(p) { return (p.candidate.issues || []).find((i) => HOLD_TEXT[i.code])?.code || null; }
@@ -364,16 +368,18 @@ function drawOverlay(p, diag) {
   ctx.strokeStyle = "#5FD38D"; ctx.setLineDash([12, 8]); ctx.strokeRect(-pose.width / 2 - 10, -pose.height / 2 - 10, pose.width + 20, pose.height + 20); ctx.setLineDash([]);
   if (diag) { ctx.strokeStyle = "#7FB4FF"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(70, 0); ctx.moveTo(0, 0); ctx.lineTo(0, -90); ctx.stroke(); ctx.fillStyle = "#7FB4FF"; ctx.fillText("u", 84, 8); ctx.fillText("-v", 14, -96); ctx.lineWidth = 3; }
   ctx.restore();
-  if (diag) {  // Bolt / Part ROI (코드가 계산한 polygon 그대로)
+  const mirrored = g.hole_numbering === "mirrored";   // g.holes/*_rois 의 키는 물리적 구멍 번호 —
+  if (diag) {                                          // 180도 돌아간 조립체는 레시피 번호가 반대쪽 끝에서 매겨진다
     ctx.lineWidth = 2;
     for (const [h, poly] of Object.entries(g.bolt_rois || {})) polygon(ctx, poly, "#FFD166");
     // 파트 ROI 는 Mother 위·아래 양쪽 (어느 쪽으로 뻗어도 정상 조립) — 아래쪽은 점선을 더 성기게
     for (const [key, dash] of [["part_rois", [6, 5]], ["part_rois_down", [3, 7]]])
-      for (const [h, byCls] of Object.entries(g[key] || {})) { const pl = (p.recipe.placements || []).find((x) => String(x.mother_hole) === h); if (pl) polygon(ctx, byCls[pl.part], pl.part === "part_2hole" ? "#7FE0FF" : "#FF9BD0", dash); }
+      for (const [ph, byCls] of Object.entries(g[key] || {})) { const h = mirrored ? 6 - ph : ph; const pl = (p.recipe.placements || []).find((x) => String(x.mother_hole) === String(h)); if (pl) polygon(ctx, byCls[pl.part], pl.part === "part_2hole" ? "#7FE0FF" : "#FF9BD0", dash); }
     ctx.lineWidth = 3;
   }
   const rings = S.rings || emptyRings(p);
-  for (const [h, pt] of Object.entries(g.holes || {})) {
+  for (const [ph, pt] of Object.entries(g.holes || {})) {   // 레시피 번호(rings/H표시)가 반대쪽 끝에서 매겨진다
+    const h = mirrored ? 6 - ph : ph;
     const st = rings[h] || "none", c = COL[st];
     ctx.strokeStyle = c; ctx.setLineDash(st === "wait" || st === "skip" ? [8, 7] : []); ctx.lineWidth = st === "ok" || st === "ng" ? 6 : 3;
     ctx.beginPath(); ctx.arc(pt[0], pt[1], 44, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);

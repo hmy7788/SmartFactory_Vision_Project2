@@ -182,5 +182,19 @@ scenario("hole table ignores per-frame observed jitter", () => {
   check("지금 column unchanged", text().includes("노란 볼트 + 2구 파트"));
 });
 
+// 9. 조립체를 180도 돌려 core가 반대쪽 끝에서 읽으면(geometry.hole_numbering === "mirrored"),
+// p.observed 는 물리적 구멍 번호(카메라가 본 실제 위치) 기준이라 레시피 번호와 반대다 — H1(레시피)의
+// 내용은 물리적으로 구멍 5 자리에 있다. obsNames() 가 이 관계(6-h)를 되짚어야 "지금" 칸이 맞게 뜬다.
+scenario("hole table relabels observed by mother_hole when mirrored (180-degree rotation)", () => {
+  const physical5 = { "5": { bolt: [{ class_name: "bolt_1" }], part: [{ class_name: "part_2hole" }] } };
+  const oneDone = { status: "IN_PROGRESS", issues: MISSING(3, "part_3hole", "bolt_2") };
+  const mirroredGeom = { pose: { center: [640, 360], u: [1, 0], v: [0, 1], width: 800, height: 80, angle_rad: 0 },
+                         holes: { 5: [980, 360], 3: [640, 360] }, hole_numbering: "mirrored" };
+  for (let i = 0; i < 12; i++)
+    feed({ candidate: oneDone, confirmed: oneDone, stable: true, extra: { observed: physical5, geometry: mirroredGeom } });
+  check("recipe H1's ring is ok (issues are already recipe-numbered)", S.rings[1] === "ok", JSON.stringify(S.rings));
+  check("지금 column shows H1's content read from physical hole 5", text().includes("노란 볼트 + 2구 파트"), text().slice(0, 300));
+});
+
 console.log(`\n${passed} checks passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
