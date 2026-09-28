@@ -252,3 +252,8 @@ python src/rule_based/capture_hole_check.py --camera 3 --output runs/rule_based_
 | `src/detection/rt-detr/live_test.py` | RT-DETR 검출 결과만 실시간으로 보기 (`--camera`, `--backend`, `--weights`, `--droidcam-watermark`) |
 | `src/rule_based/live_hole_check.py` | 구멍 개수 룰베이스로 Model A/B/C 분류 (`--exposure`, `--backend`, `--droidcam-watermark`) |
 | `src/rule_based/capture_hole_check.py` | 위와 같은 화면에서 `s`키로 발표용 사진 저장 (`--output`, `--tag`) |
+
+```
+python -m scripts.live_inspection --model-type yolo-obb --camera 1 --recipe 3
+python -m scripts.live_inspection --model-type yolo --weights runs/yolo/best.pt --camera 1
+```
