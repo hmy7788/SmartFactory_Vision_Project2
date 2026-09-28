@@ -155,7 +155,7 @@ class JsonlSource:
 
 # ── 실제 카메라 ────────────────────────────────────────
 class CameraSource:
-    """웹캠 → YOLO-OBB → DetectionFrame + JPEG. 가중치 파일(model/yolo_obb_parts.pt)만 있으면 붙는다.
+    """웹캠(또는 영상) → 검출 모델 → DetectionFrame + JPEG. 모델은 YOLO(obb/detect) · RT-DETR 무엇이든 (model_loader).
 
     지키는 것:
       1. timestamp 는 캡처 직후 now_ms(). 추론이 끝난 시각이 아니다 — 코어의 frame gap 판정 기준이라서.
@@ -172,10 +172,11 @@ class CameraSource:
 
     def __init__(self, index: int = 0, weights: str | None = "model/yolo_obb_parts.pt", frame_size=(1280, 720),
                  conf: float = 0.25, imgsz: int = 640, mapping_path: str | Path = "config/class_mapping.json",
-                 capture=None, model=None, jpeg_quality: int = 80, refine_angles: bool = False,
+                 capture=None, model=None, jpeg_quality: int = 80, refine_angles: bool | None = False,
                  threaded: bool | None = None, max_fps: float = 20.0, video: str | None = None, loop: bool = True,
-                 video_end: str | None = None):
+                 video_end: str | None = None, model_type: str = "auto"):
         self.index, self.weights, self.frame_size = index, weights, tuple(frame_size)
+        self.model_type = model_type                    # auto · yolo · rtdetr (src/vision/model_loader.py)
         # 8. 영상 파일 모드: 웹캠 대신 녹화한 조립 영상을 원래 속도로 재생하며 같은 판정을 돌린다.
         #    끝나면 video_end 대로: "hold" 마지막 장면을 계속 보여 준다 (카메라가 완성품을 계속 보는 것과 같다 —
         #    PASS 와 [작업 완료] 버튼이 남는다) · "loop" 처음부터 · "stop" 끝. 새 작업·작업 완료(reset) 는 처음으로 되감는다.
@@ -187,7 +188,7 @@ class CameraSource:
         self._video_fps: float | None = None
         self._next_frame_at = 0.0
         self.conf, self.imgsz, self.jpeg_quality = conf, imgsz, jpeg_quality
-        self.refine_angles = refine_angles              # AABB(detect) 모델일 때 OpenCV 로 각도를 붙인다 (삐뚤게 놓은 경우용)
+        self.refine_angles = refine_angles              # AABB(detect) 모델일 때 OpenCV 로 각도를 붙인다 (삐뚤게 놓은 경우용). None = 모델 task 로 자동
         # 7. 영상과 추론을 분리한다. 영상은 카메라 속도로 계속 내보내고, 추론은 뒤 스레드에서 되는 만큼만 돌려
         #    가장 최근 결과를 매 프레임에 붙인다. 무거운 모델(RT-DETR, CPU 1~2초)이어도 화면은 끊기지 않고 판정만 늦게 갱신된다.
         #    주입한 가짜 캡처(테스트)는 기본이 동기 — 프레임마다 추론 결과가 결정적으로 붙어야 하니까.
@@ -236,9 +237,11 @@ class CameraSource:
         return self._capture
 
     def _open_model(self):
-        if self._model is None:
-            from ultralytics import YOLO
-            self._model = YOLO(self.weights)
+        if self._model is None:                      # 서버는 보통 미리 연 모델을 넘긴다 (web.server.build). 여기는 직접 쓸 때
+            from src.vision.model_loader import load_model
+            self._model, info = load_model(self.weights, self.model_type)
+            if self.refine_angles is None:
+                self.refine_angles = info.task == "detect"
         return self._model
 
     def _predict(self, img):

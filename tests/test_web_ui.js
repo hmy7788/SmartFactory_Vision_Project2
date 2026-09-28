@@ -133,7 +133,7 @@ scenario("pass during hold keeps PASS but locks the button", () => {
 });
 
 // 0. 버전 표시가 있다 (브라우저 캐시 확인용)
-check("UI version string", /0927/.test(PK.UI_VERSION), PK.UI_VERSION);
+check("UI version string", /09\d\d/.test(PK.UI_VERSION), PK.UI_VERSION);
 
 // 5. PASS 후보는 확정 전엔 큰 글씨를 바꾸지 않고, 확정되면 [작업 완료]. 영상 끝 안내.
 scenario("pass appears only when confirmed; video end note", () => {

@@ -10,6 +10,8 @@ python -m web.server                     # 합성 데모, http://localhost:8000
 python -m web.server --speed 2           # 데모 시나리오 2배속 (발표 리허설)
 python -m web.server --source jsonl --jsonl detections.jsonl     # 기록한 검출 재생
 python -m web.server --source camera     # 웹캠 + YOLO-OBB (model/yolo_obb_parts.pt 가 있어야 함)
+python -m web.server --source camera --weights model/내모델.pt   # 다른 가중치 (YOLO/RT-DETR 자동 판별) — docs/model_swap.md
+python -m scripts.run_ui                 # 가중치·카메라를 골라서 띄우는 실행기 (윈도우: run_ui.cmd)
 python -m web.server --video 조립영상.mp4  # 녹화 영상으로 같은 판정. 끝나면 마지막 장면 유지(--video-end hold, 기본) · loop · stop
 python -m unittest tests.test_web        # 13개, 약 20초
 ```

@@ -184,6 +184,7 @@ class Pipeline:
             "recipe": self.recipes[self.recipe.recipe_id],
             "recipes": sorted(self.recipes),
             "run_id": self.run_id, "product_id": self.product_id,
+            "model": getattr(self, "model_label", None),                # 어떤 가중치로 돌고 있는지 (모델 비교할 때)
             "phase": snapshot.phase.value, "evaluated_phase": snapshot.evaluated_phase.value,
             "status": snapshot.status.value, "stable": snapshot.stable,
             "candidate": _jsonable(asdict(snapshot.candidate)),

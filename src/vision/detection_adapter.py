@@ -12,7 +12,8 @@ def from_ultralytics(result, frame_id: int, timestamp_ms: float, class_mapping=N
 
     Caller supplies capture time, not a model-local timing value. No inference
     or recipe logic is performed here. Class names must match the five classes
-    (either the model's own names or through class_mapping).
+    (either the model's own names or through class_mapping). A class mapped to null
+    (None) is dropped — extra classes a model may have (hand, assembly …).
     """
     obb = getattr(result, "obb", None)
     if obb is not None:
@@ -29,7 +30,11 @@ def from_ultralytics(result, frame_id: int, timestamp_ms: float, class_mapping=N
     if not len(boxes) == len(classes) == len(confidences):
         raise ValueError("Mismatched detection output lengths")
     mapping = class_mapping or {}
-    detections = tuple(OBBDetection(str(i), mapping.get(result.names[int(class_id)], result.names[int(class_id)]), confidence,
-                                   (box[0], box[1]), box[2], box[3], box[4])
-                       for i, (box, class_id, confidence) in enumerate(zip(boxes, classes, confidences)))
-    return DetectionFrame(frame_id, timestamp_ms, detections)
+    detections = []
+    for i, (box, class_id, confidence) in enumerate(zip(boxes, classes, confidences)):
+        name = result.names[int(class_id)]
+        name = mapping[name] if name in mapping else name
+        if name is None:                  # 매핑 값이 null = 이 시스템이 안 쓰는 클래스 (손·조립체 등) → 버린다
+            continue
+        detections.append(OBBDetection(str(i), name, confidence, (box[0], box[1]), box[2], box[3], box[4]))
+    return DetectionFrame(frame_id, timestamp_ms, tuple(detections))

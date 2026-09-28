@@ -27,6 +27,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from src.app.config import load_config
+from src.vision.model_loader import check_names, load_mapping, load_model, resolve_mapping
 from web.pipeline import Pipeline
 from web.source import CameraSource, DemoSource, JsonlSource, demo_config
 from web.store import Store
@@ -187,7 +188,8 @@ def create_app(pipeline: Pipeline, store: Store, hub: Hub) -> Starlette:
     ])
 
 
-def build(args) -> tuple[Starlette, Pipeline, Store, Hub]:
+def build(args, preloaded=None) -> tuple[Starlette, Pipeline, Store, Hub]:
+    """preloaded = load_model() 결과 (model, info). scripts.run_ui 가 이미 연 모델을 다시 열지 않게."""
     config = load_config(ROOT / args.config)
     store = Store(ROOT / args.db, max_frame_gap_ms=config["max_frame_gap_ms"])
     hub = Hub()
@@ -208,11 +210,29 @@ def build(args) -> tuple[Starlette, Pipeline, Store, Hub]:
         size = tuple(int(x) for x in args.camera_size.lower().split("x"))
         if args.video and not Path(args.video).exists():
             raise SystemExit(f"영상 파일이 없습니다: {args.video}")
+        mapping_path = resolve_mapping(weights, args.class_map)
+        net, refine, model_label = None, bool(args.refine_angles), "camera-only"
+        if weights:                                     # 모델을 여기서 한 번 연다 — 이름이 안 맞으면 화면을 띄우기 전에 멈춘다
+            net, info = preloaded or load_model(weights, args.model_type)
+            ok, lines = check_names(info.names, load_mapping(mapping_path))
+            print(f"[model] {info.label} · {info.size_mb} MB · 매핑 {mapping_path.relative_to(ROOT) if mapping_path.is_relative_to(ROOT) else mapping_path}")
+            for line in lines:
+                print("        " + line)
+            if info.task not in ("obb", "detect"):
+                raise SystemExit(f"task={info.task} 모델은 이 시스템에 못 씁니다 (obb 또는 detect 만)")
+            if not ok:
+                raise SystemExit("클래스 이름을 맞춘 뒤 다시 실행하세요 (위 안내).")
+            refine = (info.task == "detect") if args.refine_angles is None else args.refine_angles
+            if info.task == "detect":
+                print(f"        detect(AABB) 모델 — 각도는 OpenCV 보정 {'켬' if refine else '끔 (똑바로 놓는 시연만)'}")
+            model_label = info.label
         factory = lambda recipe, cfg: CameraSource(args.camera, weights, frame_size=size, conf=args.conf,
-                                                    imgsz=args.imgsz, mapping_path=ROOT / "config/class_mapping.json",
-                                                    refine_angles=args.refine_angles, video=args.video, video_end=args.video_end)
+                                                    imgsz=args.imgsz, mapping_path=mapping_path, model=net,
+                                                    refine_angles=refine, video=args.video, video_end=args.video_end,
+                                                    model_type=args.model_type)
         model = weights or "camera-only"
     pipeline = Pipeline(config, ROOT / args.recipe_dir, store, factory, args.recipe, hub.publish, model_file=model)
+    pipeline.model_label = model_label if args.source == "camera" else model   # 진단 탭 · 사이드바에 보이는 모델 이름
     return create_app(pipeline, store, hub), pipeline, store, hub
 
 
@@ -229,12 +249,17 @@ def parse(argv=None):
     p.add_argument("--video-end", choices=["hold", "loop", "stop"], default="hold",
                    help="영상이 끝나면: hold 마지막 장면 유지(기본 — PASS 와 [작업 완료] 가 남는다) · loop 처음부터 · stop 종료. "
                         "[새 작업]·[작업 완료] 는 언제나 처음부터 다시 재생")
-    p.add_argument("--weights", default="model/yolo_obb_parts.pt")
+    p.add_argument("--weights", default="model/yolo_obb_parts.pt", help="검출 가중치 .pt — YOLO(obb/detect, v8·11·26 …) 또는 RT-DETR")
+    p.add_argument("--model-type", choices=["auto", "yolo", "rtdetr"], default="auto",
+                   help="auto(기본): 체크포인트를 보고 YOLO/RT-DETR 를 고른다")
+    p.add_argument("--class-map", default=None,
+                   help="클래스 이름 매핑 JSON. 기본: 가중치 옆 <이름>.classes.json 이 있으면 그것, 없으면 config/class_mapping.json")
     p.add_argument("--camera-size", default="1280x720", help="캡처 해상도 WxH. 카메라가 다른 값을 주면 실제 값으로 바꿔 쓴다")
     p.add_argument("--conf", type=float, default=0.25, help="모델 후보 임계 (판정 임계 0.5 는 config)")
     p.add_argument("--imgsz", type=int, default=640)
-    p.add_argument("--refine-angles", action="store_true",
-                   help="AABB(detect) 가중치일 때 OpenCV 로 Mother·부품 각도를 추정 (삐뚤게 놓은 경우 시험용; 똑바로 놓는 시연엔 불필요)")
+    p.add_argument("--refine-angles", action=argparse.BooleanOptionalAction, default=None,
+                   help="OpenCV 로 Mother·부품 각도를 추정. 기본: detect(AABB) 모델이면 켬, obb 모델이면 끔. "
+                        "--no-refine-angles 로 끌 수 있다")
     p.add_argument("--no-model", action="store_true", help="가중치 없이 카메라 영상만 (구도·해상도 확인용). 판정은 전부 보류")
     p.add_argument("--fps", type=float, default=10.0)
     p.add_argument("--speed", type=float, default=1.0, help="데모 시나리오 배속 (안정화 창도 같이 나눔, demo 전용)")
@@ -246,12 +271,15 @@ def parse(argv=None):
     return args
 
 
-def main(argv=None):
+def serve(args, preloaded=None):
     import uvicorn
-    args = parse(argv)
-    app, pipeline, store, hub = build(args)
+    app, pipeline, store, hub = build(args, preloaded)
     pipeline.start()
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
+
+def main(argv=None):
+    serve(parse(argv))
 
 
 if __name__ == "__main__":

@@ -60,7 +60,7 @@ function human(i) {
 //   GEOM_KEEP_MS   보류 중 영상 위 H 링을 마지막 위치에 이 시간까지 유지 (손이 지나갈 때 링이 사라졌다 나타나지 않게. 더 길면 Mother 가 움직였을 수 있어 지운다)
 //   HOLD_HINT_MS   작업자가 고쳐야 하는 보류(Mother 기울어짐·두 개·안 보임·카메라) 가 이 시간 넘게 이어질 때만 판정 카드 맨 아래에 한 줄 안내
 const UI = { MAT_WINDOW_MS: 700, GEOM_KEEP_MS: 1500, HOLD_HINT_MS: 3000 };
-const UI_VERSION = "화면 0927c";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
+const UI_VERSION = "화면 0928m";   // 사이드바 아래에 보인다 — 브라우저가 옛 app.js 를 캐시로 쓰고 있는지 한눈에 확인
 const S = { view: "work", p: null, prev: null, rings: null, obs: null, geom: null, shown: null, matHist: [], matView: null, holdSince: null, holdHint: null,
             candKey: null, candSince: null, keys: {},
             sub: "live", period: 7, events: [], hist: null, sel: null, ana: null, diag: null, recipes: null };
@@ -87,6 +87,9 @@ function onPayload(p) {
   const prev = S.p; S.prev = prev; S.p = p;
   if (p.product_id !== prev?.product_id) { S.events = []; S.shown = null; S.rings = null; S.obs = null; S.matHist = []; S.holdSince = null; }
   S.events = p.events || S.events;
+  if (p.model !== prev?.model) {   // 사이드바 버전 아래에 가중치 파일 이름 — 다른 모델로 돌릴 때 화면만 보고도 구분
+    const ve = $("#ver"); if (ve) { ve.textContent = UI_VERSION + (p.model ? "\n" + p.model.split(" · ")[0] : ""); ve.title = p.model || ""; }
+  }
   deriveView(p);
   if (S.view === "work" || S.view === "diag") render(prev && sameShape(prev, p));
 }
@@ -425,7 +428,7 @@ function kvFrame(p) {
     + (t.infer_ms != null ? kv("모델 추론 / 판정 지연", `${t.infer_ms} ms / ${t.result_age_ms == null ? "—" : t.result_age_ms + " ms 전 프레임"}`, t.infer_ms > 500 ? "var(--hold)" : "var(--ok)") : "") + kv("mother pose", pose ? `(${pose.center[0].toFixed(0)}, ${pose.center[1].toFixed(0)}) · W ${pose.width.toFixed(0)} · H ${pose.height.toFixed(0)} · ${(pose.angle_rad * 180 / Math.PI).toFixed(1)}°` : (p.mother_angle_deg != null ? `geometry 없음 · 검출 각도 ${p.mother_angle_deg.toFixed(1)}°` : "geometry 없음"))
     + kv("stable / material", `${t.stable_ms} ms / ${t.material_stable_ms} ms`) + kv("calibration_status", p.calibration_status, p.calibration_status === "UNVALIDATED_DEFAULTS" ? "var(--hold)" : "var(--ok)")
     + kv("source", p.source_error ? esc(p.source_error) : (p.has_video ? "camera OK" : "demo / jsonl"), p.source_error ? "var(--ng)" : "var(--ok)")
-    + kv("product_id / run_id", `${p.product_id} / ${p.run_id}`);
+    + kv("모델", p.model ? esc(p.model) : "—") + kv("product_id / run_id", `${p.product_id} / ${p.run_id}`);
 }
 function issuesHtml(p) { const iss = p.candidate.issues || []; return iss.length ? iss.map((i) => `<div class="issue"><span class="c" style="color:${i.code.startsWith("MISSING") ? "var(--wait)" : (p.candidate.status === "HOLD" ? "var(--hold)" : "var(--ng)")}">${i.code}</span><span>${i.hole_id ? "H" + i.hole_id : "—"}</span><span>expected ${esc(i.expected)}</span><span>observed ${esc(i.observed)}</span></div>`).join("") : `<div class="note">issues 없음</div>`; }
 function eventsHtml(p) {

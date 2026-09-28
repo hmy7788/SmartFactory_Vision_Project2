@@ -20,7 +20,7 @@ try:
     from starlette.testclient import TestClient
     from web.server import build, parse
     HAVE_STARLETTE = True
-except ImportError:              # 팀 환경에 fastapi/starlette 가 없으면 서버 테스트만 건너뛴다
+except (ImportError, RuntimeError):   # 팀 환경에 fastapi/starlette(또는 testclient 의 httpx) 가 없으면 서버 테스트만 건너뛴다
     HAVE_STARLETTE = False
 
 ROOT = Path(__file__).resolve().parents[1]

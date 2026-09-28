@@ -2,6 +2,17 @@
 
 이 브랜치는 **재료 준비 확인 → 자동 조립 시작 → Mother 기준 ROI 조립 검사**를 구현한다. 모델 추론·기하·Recipe·시간 안정화를 분리하여 모델 없이도 테스트할 수 있다.
 
+## 다른 모델로 UI 돌려 보기 (브랜치 `yuseong/ui-demo`)
+
+시연에 쓰는 작업자 UI 에 **각자 학습한 검출 가중치를 넣어** 같은 화면·같은 판정으로 돌려 볼 수 있다.
+
+1. 가중치(.pt)를 `model/` 에 넣는다 (Git 에는 안 올림).
+2. 윈도우: `run_ui.cmd` 더블클릭 → 모델 번호 · 카메라 번호 선택 → 브라우저가 열린다. `.pt`(와 녹화 영상)를 `run_ui.cmd` 위에 끌어다 놓아도 된다.
+   그 밖: `python -m scripts.run_ui model/내모델.pt [영상.mp4] [--camera 1]`
+3. YOLO-OBB · YOLO detect · RT-DETR 를 자동 판별한다. 클래스 이름이 다르면 가중치 옆 `<이름>.classes.json` 으로 맞춘다.
+
+자세한 내용: [docs/model_swap.md](docs/model_swap.md) · 파일만 먼저 확인: `python -m scripts.check_weights model/내모델.pt`
+
 ## 빠른 시작
 
 Python 3.11+, 저장소 루트에서 실행한다. 코어와 테스트는 외부 패키지가 필요 없다.
@@ -59,6 +70,7 @@ python -m scripts.verify_materials --recipe recipe_1
 - [웹 UI — 실행법·화면·payload 계약·CameraSource 채우기](docs/web.md) (`python -m web.server`, 카메라·모델 없이 데모로 돈다)
 - [저장 계층 — SQLite 에 무엇을 어떻게 남기는가](docs/storage.md)
 - [변경 이력 2026-09 (yuseong/web)](docs/changes_2026-09.md)
+- [다른 모델로 UI 돌려 보기 — run_ui.cmd · 자동 판별 · 클래스 매핑](docs/model_swap.md)
 - [부품 검출 YOLO-OBB — 데이터셋 만들기·학습·평가(mAP·각도·CPU 속도)](docs/detection_obb.md) (`run_train_obb.cmd`)
 - [완성 조립체 분류 ResNet-18](docs/classification.md) (`run_train_classifier.cmd`)
 - [개발 가이드](state_machine_development_guidelines.md)
