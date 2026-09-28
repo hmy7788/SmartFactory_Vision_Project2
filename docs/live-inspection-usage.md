@@ -76,7 +76,8 @@ python -m scripts.live_inspection --video 1.mp4 --recipe 3 --save-video runs/ins
 | 옵션 | 기본값 | 설명 |
 |---|---|---|
 | `--recipe {1,2,3}` | 1 | 시작 레시피 |
-| `--weights` | `runs/rtdetr/full_run/weights/best.pt` | RT-DETR 가중치 |
+| `--model-type {rtdetr,yolo,yolo-obb}` | rtdetr | 검출 모델 종류 (아래 "모델 종류 바꾸기" 참고) |
+| `--weights` | `--model-type`별 기본값 | 가중치 경로 |
 | `--conf` | config의 `confidence_threshold`(0.5) | 검출 confidence |
 | `--config` | `config/rtdetr_live.json` | 판정 설정 (아래 참고) |
 | `--camera` | 0 | 카메라 인덱스 |
@@ -88,6 +89,22 @@ python -m scripts.live_inspection --video 1.mp4 --recipe 3 --save-video runs/ins
 | `--save-video` | (없음) | HUD 포함 결과를 mp4로 저장 |
 | `--no-window` | 꺼짐 | 창 없이 실행 (콘솔 로그/저장만) |
 | `--max-frames` | 0 | 처리할 최대 프레임 (0=끝까지) |
+
+## 5-1. 모델 종류 바꾸기 (`--model-type`)
+
+| 값 | 로드 클래스 | 기본 가중치 | 각도 처리 |
+|---|---|---|---|
+| `rtdetr` (기본) | `ultralytics.RTDETR` | `runs/rtdetr/full_run/weights/best.pt` | AABB만 나와서 `rtdetr_adapter.py`가 mother 각도를 영상에서 복원 |
+| `yolo` | `ultralytics.YOLO` (detect) | 없음 — `--weights` 필수 | rtdetr와 같은 AABB라 같은 어댑터 재사용 |
+| `yolo-obb` | `ultralytics.YOLO` (obb) | `model/yolo_obb_parts.pt` | 결과에 각도가 이미 있어 복원 없이 그대로 사용 (CLAUDE.md 확정 메인 파이프라인) |
+
+```
+python -m scripts.live_inspection --model-type yolo-obb --camera 1 --recipe 3
+python -m scripts.live_inspection --model-type yolo --weights runs/yolo/best.pt --camera 1
+```
+
+- 클래스 이름이 5클래스(`bolt_2, bolt_1, mother_part, part_3hole, part_2hole`)와 다르면 HUD 색상 매핑(`src/app/hud.py`)이 못 알아봄 → 같은 클래스 이름/개수로 학습된 가중치여야 함
+- `yolo-obb`는 회전각을 다시 재는 과정이 없어 `rtdetr`/`yolo`보다 프레임당 더 빠르고, 우하단 각도 표시는 `obb`로 나옴
 
 ## 6. 판정 설정 (`--config`)
 

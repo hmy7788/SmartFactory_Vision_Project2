@@ -1,26 +1,35 @@
 """
-카메라(또는 영상 파일) -> RT-DETR -> 어댑터 -> InspectionService -> 한글 HUD 라이브 검사.
+카메라(또는 영상 파일) -> 검출 모델(RT-DETR/YOLO/YOLO-OBB) -> 어댑터 -> InspectionService
+-> 한글 HUD 라이브 검사.
 
 재료 확인(필요/현재 개수) -> 조립 검사(H1~H5 구멍별 볼트/부품 배치, 오류 원인 안내) 흐름을
-RT-DETR 검출로 돌린다. RT-DETR은 회전 없는 박스만 주기 때문에 src/vision/rtdetr_adapter.py가
-mother 각도를 영상에서 복원해서 엔진에 넘긴다.
+검출 결과로 돌린다. --model-type으로 검출 모델 종류를 고른다:
+  - rtdetr(기본): ultralytics RTDETR, 회전 없는 박스만 나오므로 rtdetr_adapter.py가
+    mother 각도를 영상에서 복원해서 엔진에 넘긴다.
+  - yolo: ultralytics YOLO(detect task), rtdetr와 같은 AABB 출력이라 같은 어댑터를 쓴다.
+  - yolo-obb: ultralytics YOLO(obb task, CLAUDE.md 확정 메인 파이프라인). 결과에 각도가
+    이미 있어서 영상에서 각도를 복원할 필요가 없다 (detection_adapter.from_ultralytics).
+--weights를 생략하면 --model-type별 기본 경로를 쓴다 (아래 DEFAULT_WEIGHTS).
 
 ⚠️ 원래 엔진(config/mvp.json)은 (1) mother가 ±15° 넘게 기울면 거부하고 (2) 세로 부품이 mother
    "위쪽"으로만 붙는다고 가정하고 (3) H1을 화면 왼쪽으로 고정해서, 조립체를 다른 방향으로
-   놓으면 정상 조립도 실패한다 (정답을 아는 사진 100장 기준 PASS 61장). 기본 설정인
-   config/rtdetr_live.json은 이 셋을 풀어서(각도 89.9°, allow_parts_below, allow_mirrored_holes)
-   같은 100장에서 PASS 98장이 나온다 (다른 모델 레시피/틀린 구멍 위치 레시피로 검사한
-   300건은 PASS 0건). 팀원 원래 동작이 필요하면 --config config/mvp.json.
+   놓으면 정상 조립도 실패한다 (정답을 아는 사진 100장 기준 PASS 61장, RT-DETR 어댑터 기준).
+   기본 설정인 config/rtdetr_live.json은 이 셋을 풀어서(각도 89.9°, allow_parts_below,
+   allow_mirrored_holes) 같은 100장에서 PASS 98장이 나온다 (다른 모델 레시피/틀린 구멍 위치
+   레시피로 검사한 300건은 PASS 0건). 팀원 원래 동작이 필요하면 --config config/mvp.json.
 
 사용법 (저장소 루트에서):
     python -m scripts.live_inspection --camera 3 --recipe 3
     python -m scripts.live_inspection --camera 1 --backend msmf --droidcam-watermark
     python -m scripts.live_inspection --video 1.mp4 --recipe 3 --save-video runs/inspection_demo.mp4 --no-window
+    python -m scripts.live_inspection --model-type yolo-obb --camera 1 --recipe 3
+    python -m scripts.live_inspection --model-type yolo --weights runs/yolo/best.pt --camera 1
 
 키: [1/2/3] 레시피 선택(초기화)  [n] 새 제품(초기화)  [q] 종료
 """
 
 import argparse
+import math
 import sys
 import time
 from fractions import Fraction
@@ -28,7 +37,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from ultralytics import RTDETR
+from ultralytics import RTDETR, YOLO
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -39,7 +48,16 @@ from src.app.config import load_config  # noqa: E402
 from src.app.hud import Hud  # noqa: E402
 from src.app.inspection_service import InspectionService  # noqa: E402
 from src.process.recipe import load_recipe  # noqa: E402
+from src.vision.detection_adapter import from_ultralytics  # noqa: E402
 from src.vision.rtdetr_adapter import RTDETRAdapter  # noqa: E402
+
+# --weights를 생략했을 때 --model-type별 기본 가중치. yolo는 저장소에 학습된 기본값이 없어
+# None -> 필수 인자로 취급한다.
+DEFAULT_WEIGHTS = {
+    "rtdetr": ROOT / "runs/rtdetr/full_run/weights/best.pt",
+    "yolo": None,
+    "yolo-obb": ROOT / "model/yolo_obb_parts.pt",
+}
 
 
 def open_camera(args):
@@ -62,7 +80,10 @@ def main():
 
     parser = argparse.ArgumentParser(description="RT-DETR 기반 라이브 조립 검사")
     parser.add_argument("--recipe", type=int, choices=[1, 2, 3], default=1)
-    parser.add_argument("--weights", default=str(ROOT / "runs/rtdetr/full_run/weights/best.pt"))
+    parser.add_argument("--model-type", choices=["rtdetr", "yolo", "yolo-obb"], default="rtdetr",
+                        help="검출 모델 종류 (기본 rtdetr). yolo-obb는 각도가 결과에 이미 있어 "
+                             "영상에서 mother 각도를 복원하지 않는다")
+    parser.add_argument("--weights", default=None, help="생략하면 --model-type 기본 경로 사용")
     parser.add_argument("--conf", type=float, default=None, help="생략하면 config의 confidence_threshold")
     parser.add_argument("--config", type=Path, default=ROOT / "config/rtdetr_live.json",
                         help="기본은 각도 제한을 풀고 위/아래 부품·좌우 뒤집힌 번호를 허용하는 라이브용 설정 "
@@ -81,15 +102,20 @@ def main():
     parser.add_argument("--max-frames", type=int, default=0, help="0이면 끝까지")
     args = parser.parse_args()
 
+    weights = Path(args.weights) if args.weights else DEFAULT_WEIGHTS[args.model_type]
+    if weights is None:
+        parser.error(f"--model-type {args.model_type}는 저장소에 기본 가중치가 없습니다. --weights로 지정하세요.")
+
     config = load_config(args.config)
     recipes = {n: load_recipe(ROOT / f"config/recipes/recipe_{n}.json") for n in (1, 2, 3)}
     service = InspectionService(config, recipes[args.recipe])
-    adapter = RTDETRAdapter()
+    # yolo-obb는 결과에 각도가 이미 있어 rtdetr_adapter(영상에서 각도 복원)가 필요 없다.
+    adapter = None if args.model_type == "yolo-obb" else RTDETRAdapter()
     hud = Hud(config)
     conf = args.conf if args.conf is not None else config["confidence_threshold"]
 
-    print(f"[INSPECT] 모델 로드: {args.weights}", flush=True)
-    model = RTDETR(args.weights)
+    print(f"[INSPECT] 모델 로드 ({args.model_type}): {weights}", flush=True)
+    model = RTDETR(str(weights)) if args.model_type == "rtdetr" else YOLO(str(weights))
 
     is_video = args.video is not None
     cap = cv2.VideoCapture(str(args.video)) if is_video else open_camera(args)
@@ -114,7 +140,14 @@ def main():
 
         timestamp_ms = frame_index / video_fps * 1000.0 if is_video else (time.monotonic() - started) * 1000.0
         result = model.predict(frame, conf=conf, verbose=False)[0]
-        detection_frame, info = adapter.convert(result, frame, timestamp_ms)
+        if adapter is not None:
+            detection_frame, info = adapter.convert(result, frame, timestamp_ms)
+        else:
+            detection_frame = from_ultralytics(result, frame_index, timestamp_ms)
+            mother = next((d for d in detection_frame.detections if d.class_name == "mother_part"), None)
+            info = {"angle_source": "obb", "raw_boxes": len(detection_frame.detections),
+                    "after_dedup": len(detection_frame.detections),
+                    "mother_angle_deg": math.degrees(mother.angle_rad) if mother else None}
         snapshot = service.update(detection_frame)
 
         now = time.monotonic()
@@ -144,11 +177,13 @@ def main():
                 break
             if pressed in (ord("1"), ord("2"), ord("3")):
                 service.reset(recipes[int(chr(pressed))])
-                adapter.reset()
+                if adapter is not None:
+                    adapter.reset()
                 previous_key = None
             elif pressed == ord("n"):
                 service.reset()
-                adapter.reset()
+                if adapter is not None:
+                    adapter.reset()
                 previous_key = None
 
     cap.release()
