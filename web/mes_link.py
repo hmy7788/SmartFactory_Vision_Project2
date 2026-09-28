@@ -81,6 +81,14 @@ class MesLink:
         if self.transport is not None:
             self.transport.stop()
 
+    def close(self) -> None:
+        """stop() 에 더해 SQLite 파일을 놓는다 — 윈도우는 열린 파일을 못 지워서, 테스트의 임시 폴더 정리가 실패했다 (09-28 노트북)."""
+        self.stop()
+        if self._sender is not None:
+            self._sender.join(timeout=2)
+        with self._lock:
+            self._db.close()
+
     # ── 전송층이 부르는 것 ──
     def on_connected(self) -> None:
         self.connected = True

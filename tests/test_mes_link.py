@@ -43,15 +43,18 @@ class FakeTransport:
 class MesLinkTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.dir = Path(self.tmp.name)
-        self.t = FakeTransport(); self.applied = []
+        self.t = FakeTransport(); self.applied = []; self.links = []
         self.link = self.make()
 
     def tearDown(self):
+        for link in self.links:                  # 윈도우: 열린 SQLite 를 닫아야 임시 폴더를 지운다
+            link.close()
         self.tmp.cleanup()
 
     def make(self):
         link = MesLink("VIS-01", self.dir / "recipes", self.dir / "mes.db", transport=self.t,
                        on_work_order=self.applied.append, clock=lambda: "2026-09-28T09:00:00+09:00")
+        self.links.append(link)
         return link
 
     def send(self, payload, link=None):
@@ -164,8 +167,8 @@ class PipelineWithMesTests(unittest.TestCase):
         try:
             from starlette.testclient import TestClient
             from web.server import build, parse
-        except ImportError:
-            self.skipTest("starlette not installed")
+        except (ImportError, RuntimeError):      # starlette 없음 · testclient 가 요구하는 httpx 없음 (노트북 환경)
+            self.skipTest("starlette testclient not available")
         self.tmp = tempfile.TemporaryDirectory(); d = Path(self.tmp.name)
         args = parse(["--db", str(d / "t.db"), "--fps", "60", "--speed", "4"])
         self.app, self.pipeline, self.store, self.hub = build(args)
@@ -177,7 +180,7 @@ class PipelineWithMesTests(unittest.TestCase):
         self.pipeline.start()
 
     def tearDown(self):
-        self.client.__exit__(None, None, None); self.link.stop(); self.tmp.cleanup()     # 서버 종료가 pipeline.stop() 을 부른다
+        self.client.__exit__(None, None, None); self.link.close(); self.store.close(); self.tmp.cleanup()     # 서버 종료가 pipeline.stop() 을 부른다
 
     def wait(self, pred, seconds=20):
         t0 = time.time()
