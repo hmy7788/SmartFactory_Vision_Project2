@@ -63,8 +63,7 @@ def pick_weights() -> Path | None:
         print("  목록의 번호를 입력하세요")
 
 
-LAST_CAMERA = ROOT / "data" / "last_camera.txt"   # 지난번에 쓴 카메라 번호 — 다음 실행의 기본값
-CAMERA_RETRIES = 2                                  # 카메라가 덜 잡히면 2초 간격으로 다시 찾는 횟수
+CAMERA_RETRIES = 2                                  # 카메라가 하나만 잡히면 2초 간격으로 다시 찾는 횟수
 
 
 def _scan_cameras(cv2, backend) -> list[int]:
@@ -91,15 +90,11 @@ def pick_camera(sleep=time.sleep) -> int:
     except ImportError:
         return 0
     backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else cv2.CAP_ANY
-    try:
-        last = int(LAST_CAMERA.read_text().strip())
-    except (OSError, ValueError):
-        last = None
-    # 방금 끈 검사 화면이 USB 웹캠을 아직 놓지 않았으면 그 카메라가 목록에서 빠진다 → 내장 카메라가 기본이 되어 버린다 (09-28).
-    # 지난번 카메라가 안 보이거나 카메라가 하나뿐이면 잠깐 기다렸다가 다시 찾는다.
+    # 방금 끈 검사 화면이 USB 웹캠을 아직 놓지 않았거나 USB 웹캠이 빠져 있으면 목록에 내장 카메라만 남는다 → 그게 기본이 되어
+    # 교실 쪽을 비춘다 (09-28). 카메라가 하나뿐이면 잠깐 기다렸다가 다시 찾고, 그래도 하나면 크게 알린다.
     found = _scan_cameras(cv2, backend)
     for _ in range(CAMERA_RETRIES):
-        if (last is None or last in found) and len(found) >= 2:
+        if len(found) >= 2:
             break
         print("  카메라가 덜 잡혔습니다 — 2초 뒤 다시 찾습니다 (방금 끈 화면이 카메라를 놓는 중일 수 있음)")
         sleep(2)
@@ -107,16 +102,13 @@ def pick_camera(sleep=time.sleep) -> int:
     if not found:
         print("  열리는 카메라가 없습니다 (USB 연결 · 줌/팀즈가 카메라를 잡고 있는지 확인). 0번으로 시도합니다.")
         return 0
-    default = last if last in found else max(found)     # 지난번 카메라, 없으면 나중에 꽂은 USB 웹캠(보통 가장 큰 번호)
-    print("  노트북 내장은 보통 0, USB 웹캠은 보통 1" + (f" · 지난번 {last}" if last is not None else ""))
+    if len(found) == 1:
+        print("  !! 카메라가 하나뿐입니다 — USB 웹캠이 빠졌거나 다른 프로그램이 쓰고 있을 수 있습니다. 작업대가 안 보이면 이 창을 닫고"
+              " USB 웹캠을 다시 꽂은 뒤 다시 실행하세요.")
+    default = max(found)                    # 나중에 꽂은 USB 웹캠이 보통 가장 큰 번호
+    print("  노트북 내장은 보통 0, USB 웹캠은 보통 1")
     got = ask("카메라 번호", str(default), timeout=CAMERA_PROMPT_S)
-    cam = int(got) if got.isdigit() else default
-    try:
-        LAST_CAMERA.parent.mkdir(parents=True, exist_ok=True)
-        LAST_CAMERA.write_text(str(cam))
-    except OSError:
-        pass
-    return cam
+    return int(got) if got.isdigit() else default
 
 
 def open_browser_when_ready(port: int) -> None:
