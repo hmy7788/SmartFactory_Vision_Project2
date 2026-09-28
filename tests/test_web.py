@@ -245,6 +245,31 @@ class CameraSourceTests(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE_STARLETTE, "starlette not installed")
+class ConfigDefaultTests(unittest.TestCase):
+    """카메라로 켤 때 config를 안 주면 config/mvp.json(좌우뒤집힘 불허)이 그대로 걸려서, 조립체를
+    180도 돌리면 정상 조립도 NG로 나오는 버그가 있었다 — 소스별 기본값으로 고침."""
+
+    def test_demo_defaults_to_mvp_json(self):
+        args = parse(["--source", "demo"])
+        self.assertIsNone(args.config)
+        _, pipeline, _, _ = build(args)
+        self.assertFalse(pipeline.config.get("allow_mirrored_holes"))
+        self.assertEqual(pipeline.config["max_mother_angle_deg"], 15)
+
+    def test_camera_defaults_to_rtdetr_live_json(self):
+        args = parse(["--source", "camera", "--no-model"])
+        self.assertIsNone(args.config)
+        _, pipeline, _, _ = build(args)
+        self.assertTrue(pipeline.config.get("allow_mirrored_holes"))
+        self.assertEqual(pipeline.config["max_mother_angle_deg"], 89.9)
+
+    def test_explicit_config_overrides_the_default(self):
+        args = parse(["--source", "camera", "--no-model", "--config", "config/mvp.json"])
+        _, pipeline, _, _ = build(args)
+        self.assertFalse(pipeline.config.get("allow_mirrored_holes"))
+
+
+@unittest.skipUnless(HAVE_STARLETTE, "starlette not installed")
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

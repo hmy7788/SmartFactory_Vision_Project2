@@ -182,9 +182,14 @@ python -m web.server --source camera --camera 1 --model-type yolo-obb --weights 
 사진 18장 실패)는, `experiment/rt-detr`에서 들여온 코어(`src/geometry/association.py`,
 `src/process/evaluator.py`)가 해결했다 — 조립체 전체가 진짜 180도 회전한 경우(구멍 번호와 위/아래가
 동시에 뒤집힌 경우)는 `evaluate_symmetric`의 미러 가설이 그대로 인정하고, 부품 하나만 반대쪽에 붙은
-진짜 오류는 `PART_WRONG_SIDE`로 NG를 낸다 (`tests/test_relaxed_orientation.py`, `--config
-config/rtdetr_live.json` 필요 — 기본 `config/mvp.json`은 부품이 Mother 위쪽에만 있다고 가정하는
-팀 원안 그대로 유지).
+진짜 오류는 `PART_WRONG_SIDE`로 NG를 낸다 (`tests/test_relaxed_orientation.py`).
+
+**`--config` 를 안 주면 `--source camera`(`--video` 포함)는 자동으로 `config/rtdetr_live.json`
+을 쓴다** (2026-09-28 수정 — 예전엔 카메라도 데모용 `config/mvp.json` 기본값을 그대로 물려받아서,
+`allow_mirrored_holes` 가 꺼진 채로 켜져 실제 카메라에서 180도 회전이 NG 로 나오는 버그가 있었다).
+`demo`/`jsonl` 은 데모 시나리오가 맞춰 짜인 `config/mvp.json` 기본값 그대로 (`tests/test_web.py`
+의 `ConfigDefaultTests`). 팀 원안(위쪽만, 좌우뒤집힘 불허)이 필요하면 `--config config/mvp.json`
+으로 명시해서 자동 선택을 덮어쓴다.
 
 ## 영상과 추론 분리 — 2026-09-23
 

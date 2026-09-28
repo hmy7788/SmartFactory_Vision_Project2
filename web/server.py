@@ -189,7 +189,13 @@ def create_app(pipeline: Pipeline, store: Store, hub: Hub) -> Starlette:
 
 def build(args, preloaded=None) -> tuple[Starlette, Pipeline, Store, Hub]:
     """preloaded = 미리 연 ultralytics 모델 객체. scripts.run_ui 가 이미 연 모델을 다시 열지 않게."""
-    config = load_config(ROOT / args.config)
+    # --config 를 안 줬으면: demo/jsonl 은 데모 시나리오가 맞춰 짜인 config/mvp.json(±15°, 위쪽만,
+    # 좌우뒤집힘 불허), 실제 카메라는 config/rtdetr_live.json(각도 89.9°, 좌우뒤집힘 허용, 부품은
+    # 위쪽만 — 아래쪽은 PART_WRONG_SIDE 로 NG. 단, 조립체 전체가 180도 돈 경우는 evaluate_symmetric
+    # 의 미러 가설이 위/아래까지 같이 뒤집어 인정한다). 카메라에서 mvp.json 을 그대로 쓰면 180도
+    # 회전이 그냥 NG 로 나온다 — --config 로 명시하면 이 자동 선택을 덮어쓴다.
+    config_path = args.config or ("config/rtdetr_live.json" if args.source == "camera" else "config/mvp.json")
+    config = load_config(ROOT / config_path)
     store = Store(ROOT / args.db, max_frame_gap_ms=config["max_frame_gap_ms"])
     hub = Hub()
     if args.source == "demo":
@@ -239,9 +245,10 @@ def parse(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--source", choices=["demo", "jsonl", "camera"], default="demo")
     p.add_argument("--recipe", default="recipe_1")
-    p.add_argument("--config", default="config/mvp.json",
-                   help="판정 설정. 데모 시나리오(--source demo)는 이 기본값(±15°, 위쪽만)에 맞춰 짜여 있다 — "
-                        "실제 카메라에서 각도/뒤집힘을 완화하려면 --config config/rtdetr_live.json")
+    p.add_argument("--config", default=None,
+                   help="판정 설정. 생략하면 --source별 기본값: demo/jsonl은 데모 시나리오가 맞춰 짜인 "
+                        "config/mvp.json(±15°, 위쪽만, 좌우뒤집힘 불허), camera는 config/rtdetr_live.json"
+                        "(각도 89.9°, 좌우뒤집힘·180도 전체회전 허용, 부품 아래쪽은 여전히 NG)")
     p.add_argument("--recipe-dir", default="config/recipes", help="레시피 JSON 폴더. 서버를 켠 뒤 넣은 파일도 레시피 탭을 열면 잡힌다")
     p.add_argument("--db", default="data/pokayoke.db")
     p.add_argument("--jsonl", default="detections.jsonl")
