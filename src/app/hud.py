@@ -137,7 +137,7 @@ class Hud:
                 states[hole] = "idle"
         return states
 
-    def _text_lines(self, snapshot, recipe):
+    def _text_lines(self, snapshot, recipe, final_check=None):
         status = snapshot.status
         label = STATUS_LABEL[status]
         if snapshot.candidate.status != Status.HOLD and not snapshot.stable:
@@ -145,6 +145,11 @@ class Hud:
         lines = [(f"{recipe.recipe_id}  |  {PHASE_LABEL[snapshot.phase]}", (255, 255, 255)),
                  (recipe_text(recipe), (255, 255, 255)),
                  (f"상태: {label}", STATUS_COLOR[status])]
+        if final_check is not None:
+            ok = final_check["model"] == final_check["expected"]
+            got = final_check["model"] or "판정 불가"
+            text = f"룰베이스 최종검증: {'일치' if ok else '불일치'} (기대 {final_check['expected']} / 결과 {got})"
+            lines.append((text, (80, 255, 80) if ok else (255, 70, 70)))
         for issue in snapshot.candidate.issues[:5]:
             color = GUIDANCE_COLOR if issue.code in GUIDANCE_CODES else ERROR_COLOR
             lines.append((f"• {issue_message(issue, self.config)}", color))
@@ -152,7 +157,7 @@ class Hud:
             lines.append((f"• 외 {len(snapshot.candidate.issues) - 5}건", (200, 200, 200)))
         return lines
 
-    def draw(self, frame, snapshot, detection_frame, info, recipe, fps):
+    def draw(self, frame, snapshot, detection_frame, info, recipe, fps, final_check=None):
         out = frame.copy()
         threshold = self.config["confidence_threshold"]
         for d in detection_frame.detections:
@@ -182,7 +187,7 @@ class Hud:
         font, small = self._font(size), self._font(max(13, size - 5))
         line_h = int(size * 1.35)
         pad = 10
-        lines = self._text_lines(snapshot, recipe)
+        lines = self._text_lines(snapshot, recipe, final_check)
         panel_w = int(max(font.getlength(text) for text, _ in lines)) + 2 * pad
         panel_h = line_h * len(lines) + 2 * pad
         shade = out.copy()

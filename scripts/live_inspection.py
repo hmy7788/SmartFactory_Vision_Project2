@@ -55,7 +55,9 @@ from camera_utils import remove_droidcam_watermark  # noqa: E402
 from src.app.config import load_config  # noqa: E402
 from src.app.hud import Hud  # noqa: E402
 from src.app.inspection_service import InspectionService  # noqa: E402
+from src.contracts.inspection import Status  # noqa: E402
 from src.process.recipe import load_recipe  # noqa: E402
+from src.rule_based.hole_count_check import RECIPE_TO_MODEL, classify_model  # noqa: E402
 from src.vision.detection_adapter import from_ultralytics  # noqa: E402
 from src.vision.rtdetr_adapter import RTDETRAdapter  # noqa: E402
 from src.vision.rule_based_adapter import RuleBasedAdapter  # noqa: E402
@@ -154,6 +156,7 @@ def main():
     print(f"[INSPECT] 시작 — {service.recipe.recipe_id}, 'q' 종료 / [1/2/3] 레시피 / [n] 새 제품", flush=True)
 
     writer = None
+    final_check = None
     fps, previous_key, frame_index = 0.0, None, 0
     started = last_tick = time.monotonic()
     while True:
@@ -184,6 +187,14 @@ def main():
                         "mother_angle_deg": math.degrees(mother.angle_rad) if mother else None}
         snapshot = service.update(detection_frame)
 
+        if final_check is None and snapshot.status == Status.PASS and snapshot.stable:
+            expected = RECIPE_TO_MODEL.get(service.recipe.recipe_id)
+            try:
+                model_name, message, _ = classify_model(frame)
+            except Exception as error:  # noqa: BLE001 - 검증 실패도 화면에 보여줘야 함
+                model_name, message = None, f"룰베이스 검증 오류: {error}"
+            final_check = {"expected": expected, "model": model_name, "message": message}
+
         now = time.monotonic()
         instant = 1.0 / max(now - last_tick, 1e-6)
         last_tick = now
@@ -195,7 +206,7 @@ def main():
                   f"stable={snapshot.stable!s:5} | {list(key[3])}", flush=True)
             previous_key = key
 
-        annotated = hud.draw(frame, snapshot, detection_frame, info, service.recipe, fps)
+        annotated = hud.draw(frame, snapshot, detection_frame, info, service.recipe, fps, final_check)
         if args.save_video:
             if writer is None:
                 args.save_video.parent.mkdir(parents=True, exist_ok=True)
@@ -214,11 +225,13 @@ def main():
                 if adapter is not None:
                     adapter.reset()
                 previous_key = None
+                final_check = None
             elif pressed == ord("n"):
                 service.reset()
                 if adapter is not None:
                     adapter.reset()
                 previous_key = None
+                final_check = None
 
     cap.release()
     if writer is not None:

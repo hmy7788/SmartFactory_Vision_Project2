@@ -75,6 +75,13 @@ MODEL_SIGNATURES = {
     "MODEL_C": [2],     # part_3hole
 }
 
+# config/recipes/recipe_*.json의 placements를 위 MODEL_SIGNATURES/RECIPE_PLACEMENTS와 직접
+# 대조해서 나온 매핑 (recipe_1=part_2hole@0+part_3hole@3 → MODEL_A, recipe_2=part_2hole
+# 둘 → MODEL_B, recipe_3=part_3hole 하나 → MODEL_C). 실시간 조립 검사가 "조립 완료"
+# 신호를 내면, 그 시점 사진을 이 매핑의 기대 모델과 classify_model() 결과가 일치하는지
+# 최종 교차검증하는 데 쓴다 (scripts/live_inspection.py).
+RECIPE_TO_MODEL = {"recipe_1": "MODEL_A", "recipe_2": "MODEL_B", "recipe_3": "MODEL_C"}
+
 # ⚠️ config/recipes/recipe_*.json(0-based으로 팀과 합의: 왼쪽 시작 0,1,2,3,4)에서 가져온
 # "몇 번 mother_hole에 어떤 부품+볼트가 붙어야 하는지". 구조(구멍 위치 개수)만으로는
 # 형태가 같은 한 "볼트 색상이 틀려도"/"엉뚱한 구멍에 꽂아도" 못 잡는다 — 예를 들어
