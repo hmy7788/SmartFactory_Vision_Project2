@@ -14,9 +14,9 @@
 ⚠️ 원래 엔진(config/mvp.json)은 (1) mother가 ±15° 넘게 기울면 거부하고 (2) 세로 부품이 mother
    "위쪽"으로만 붙는다고 가정하고 (3) H1을 화면 왼쪽으로 고정해서, 조립체를 다른 방향으로
    놓으면 정상 조립도 실패한다 (정답을 아는 사진 100장 기준 PASS 61장, RT-DETR 어댑터 기준).
-   기본 설정인 config/rtdetr_live.json은 이 셋을 풀어서(각도 89.9°, allow_parts_below,
-   allow_mirrored_holes) 같은 100장에서 PASS 98장이 나온다 (다른 모델 레시피/틀린 구멍 위치
-   레시피로 검사한 300건은 PASS 0건). 팀원 원래 동작이 필요하면 --config config/mvp.json.
+   기본 설정인 config/rtdetr_live.json은 각도(89.9°)와 좌우 뒤집힘(allow_mirrored_holes)은
+   풀되, 부품은 반드시 Mother "위쪽"에만 달려야 한다(allow_parts_below=false). 아래쪽에 달린
+   부품은 NG(PART_WRONG_SIDE)로 판정한다. 팀원 원래 동작이 필요하면 --config config/mvp.json.
 
 사용법 (저장소 루트에서):
     python -m scripts.live_inspection --camera 3 --recipe 3
@@ -100,6 +100,10 @@ def main():
     parser.add_argument("--save-video", type=Path, default=None, help="HUD가 그려진 결과를 mp4로 저장")
     parser.add_argument("--no-window", action="store_true", help="창 없이 실행 (저장/콘솔 로그만)")
     parser.add_argument("--max-frames", type=int, default=0, help="0이면 끝까지")
+    parser.add_argument("--max-frame-gap-ms", type=float, default=None,
+                        help="이 시간(ms)보다 프레임 간격이 크면 FRAME_GAP(처리 속도 부족)으로 판정을 보류한다. "
+                             "GPU 없이 CPU로 돌리면 추론이 느려 매 프레임 걸리므로 크게 올린다(예: 5000). "
+                             "생략하면 config 값 사용")
     args = parser.parse_args()
 
     weights = Path(args.weights) if args.weights else DEFAULT_WEIGHTS[args.model_type]
@@ -107,6 +111,8 @@ def main():
         parser.error(f"--model-type {args.model_type}는 저장소에 기본 가중치가 없습니다. --weights로 지정하세요.")
 
     config = load_config(args.config)
+    if args.max_frame_gap_ms is not None:
+        config["max_frame_gap_ms"] = args.max_frame_gap_ms
     recipes = {n: load_recipe(ROOT / f"config/recipes/recipe_{n}.json") for n in (1, 2, 3)}
     service = InspectionService(config, recipes[args.recipe])
     # yolo-obb는 결과에 각도가 이미 있어 rtdetr_adapter(영상에서 각도 복원)가 필요 없다.

@@ -34,6 +34,8 @@ def evaluate(recipe, observed):
                     errors.append(Issue("WRONG_"+slot.upper(), hole, target, d["class_name"]))
                 if not d["orientation_ok"]:
                     errors.append(Issue("PART_ORIENTATION_ERROR", hole, target, d["class_name"]))
+                if not d.get("side_ok", True):
+                    errors.append(Issue("PART_WRONG_SIDE", hole, target, d["class_name"]))
     # No final-missing NG without an end-of-work signal.
     status = Status.NG if errors else Status.IN_PROGRESS if missing else Status.PASS
     return Candidate(status, tuple(sorted(errors+missing)))

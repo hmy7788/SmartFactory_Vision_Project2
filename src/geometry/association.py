@@ -12,6 +12,7 @@ def associate(detections, geometry, config):
         if d.class_name == "mother_part":
             continue
         slot = "bolt" if d.class_name.startswith("bolt_") else "part"
+        side_ok = True
         if slot == "bolt":
             matches = [h for h, roi in geometry["bolt_rois"].items() if contains(roi, d.center_xy)]
             scores = {h: 1.0 for h in matches}
@@ -37,13 +38,19 @@ def associate(detections, geometry, config):
                 return side_scores, side_near, side_matches
 
             above = evaluate_side("part_rois", +1)
-            # Opt-in (config "allow_parts_below"): default keeps the original up-only behavior.
-            below = evaluate_side("part_rois_down", -1) if config.get("allow_parts_below") else (None, [], [])
+            # Parts must hang on the Mother-local up (-v) side. The down side is always
+            # evaluated so a part placed below is still anchored and reported (not silently
+            # dropped); config "allow_parts_below" decides whether the down side counts as OK.
+            below = evaluate_side("part_rois_down", -1)
             if above[2] and below[2]:
                 # Physically impossible for one part; hold rather than guess.
                 ambiguous.append(d.detection_id)
                 continue
-            scores, near, matches = below if below[2] else above
+            if below[2]:
+                scores, near, matches = below
+                side_ok = bool(config.get("allow_parts_below"))
+            else:
+                scores, near, matches = above
             if not matches and (above[1] or below[1]):
                 ambiguous.append(d.detection_id)
                 continue
@@ -69,5 +76,5 @@ def associate(detections, geometry, config):
                 orientation_ok = degrees(error) <= config["part_max_angle_deg"]
             observed[h][slot].append({"detection_id": d.detection_id, "class_name": d.class_name,
                                       "confidence": d.confidence, "overlap": scores[h],
-                                      "orientation_ok": orientation_ok})
+                                      "orientation_ok": orientation_ok, "side_ok": side_ok})
     return observed, tuple(sorted(ambiguous)), tuple(sorted(ignored))

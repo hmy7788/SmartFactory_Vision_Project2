@@ -1,5 +1,5 @@
-"""config/rtdetr_live.json이 켜는 옵션(위/아래 부품, 좌우 뒤집힌 번호, 큰 각도)과
-기본 설정(config/mvp.json)의 원래 동작이 유지되는지 확인한다."""
+"""config/rtdetr_live.json이 켜는 옵션(좌우 뒤집힌 번호, 큰 각도)과, 부품은 반드시
+Mother 위쪽에만 달려야 한다(아래쪽=NG)는 규칙을 확인한다."""
 import math
 
 import pytest
@@ -12,6 +12,7 @@ from src.process.recipe import Placement, Recipe, load_recipe
 
 DEFAULT = load_config("config/mvp.json")
 RELAXED = load_config("config/rtdetr_live.json")
+BELOW_OK = {**RELAXED, "allow_parts_below": True}   # 아래쪽 부품 허용 플래그 단독 검증용
 RECIPE_3 = load_recipe("config/recipes/recipe_3.json")   # H2: bolt_2 + part_3hole
 RECIPE_1 = load_recipe("config/recipes/recipe_1.json")   # H1: bolt_1+part_2hole, H4: bolt_2+part_3hole
 WIDTH = 540.0
@@ -48,13 +49,14 @@ def codes(snapshot):
     return {issue.code for issue in snapshot.candidate.issues}
 
 
-def test_default_config_keeps_original_up_only_behavior():
-    snapshot = final_snapshot(RECIPE_3, DEFAULT, scene(RECIPE_3, DEFAULT, below=True))
-    assert snapshot.status == Status.HOLD and "AMBIGUOUS_ASSOCIATION" in codes(snapshot)
+@pytest.mark.parametrize("config", [DEFAULT, RELAXED])
+def test_part_below_mother_is_ng(config):
+    snapshot = final_snapshot(RECIPE_3, config, scene(RECIPE_3, config, below=True))
+    assert snapshot.status == Status.NG and "PART_WRONG_SIDE" in codes(snapshot)
 
 
-def test_relaxed_config_accepts_part_below_mother():
-    assert final_snapshot(RECIPE_3, RELAXED, scene(RECIPE_3, RELAXED, below=True)).status == Status.PASS
+def test_allow_parts_below_flag_accepts_part_below_mother():
+    assert final_snapshot(RECIPE_3, BELOW_OK, scene(RECIPE_3, BELOW_OK, below=True)).status == Status.PASS
 
 
 def test_relaxed_config_still_accepts_part_above_mother():
@@ -74,8 +76,8 @@ def test_default_config_rejects_mirrored_hole_numbering():
 
 
 def test_rotated_assembly_on_far_side_and_mirrored_passes():
-    detections = scene(RECIPE_1, RELAXED, angle_deg=-40.0, below=True, mirrored=True)
-    assert final_snapshot(RECIPE_1, RELAXED, detections).status == Status.PASS
+    detections = scene(RECIPE_1, BELOW_OK, angle_deg=-40.0, below=True, mirrored=True)
+    assert final_snapshot(RECIPE_1, BELOW_OK, detections).status == Status.PASS
 
 
 def test_large_mother_angle_rejected_by_default_and_accepted_when_relaxed():

@@ -76,6 +76,8 @@ def issue_message(issue, config):
         return f"H{h}: 레시피에 없는 위치입니다 ({_kor(issue.observed)}) - 빼주세요"
     if code == "PART_ORIENTATION_ERROR":
         return f"H{h}: {josa(_kor(issue.expected), '이/가')} Mother와 수직이 아닙니다 - 바르게 맞춰주세요"
+    if code == "PART_WRONG_SIDE":
+        return f"H{h}: {josa(_kor(issue.expected), '이/가')} Mother 아래쪽에 달려 있습니다 - 위쪽으로 옮겨주세요"
     if code == "MOTHER_NOT_FOUND":
         return "Mother(5구 나무)가 보이지 않습니다"
     if code == "MULTIPLE_MOTHERS":
