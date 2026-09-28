@@ -7,7 +7,7 @@
 const NAME = { mother_part: "Mother (5구)", bolt_1: "노란 볼트 · 짧은", bolt_2: "주황 볼트 · 긴", part_2hole: "2구 파트", part_3hole: "3구 파트" };
 const SHORT = { mother_part: "Mother", bolt_1: "노란 볼트", bolt_2: "주황 볼트", part_2hole: "2구 파트", part_3hole: "3구 파트" };
 const CLASS_ORDER = ["mother_part", "bolt_1", "bolt_2", "part_2hole", "part_3hole"];
-const PRIORITY = { WRONG_BOLT: 0, WRONG_PART: 0, UNEXPECTED_COMPONENT: 1, EXTRA_COMPONENT: 1, PART_ORIENTATION_ERROR: 2, MISSING_BOLT: 3, MISSING_PART: 3 };
+const PRIORITY = { WRONG_BOLT: 0, WRONG_PART: 0, UNEXPECTED_COMPONENT: 1, EXTRA_COMPONENT: 1, PART_ORIENTATION_ERROR: 2, PART_WRONG_SIDE: 2, MISSING_BOLT: 3, MISSING_PART: 3 };
 const HOLD_TEXT = {
   MOTHER_ANGLE_OUT_OF_RANGE: (p) => [`Mother 가 ${fmtDeg(p.mother_angle_deg)} 기울었습니다`, `${p.timing.max_angle_deg}° 안쪽이어야 자리를 찾습니다. 손을 떼고 바로 놓으면 다시 봅니다.`],
   MOTHER_NOT_FOUND: () => ["Mother 가 안 보입니다", "카메라 안에 Mother 를 놓으세요."],
@@ -24,6 +24,8 @@ const ACT_HINT = {
   MULTIPLE_MOTHERS: () => "작업대에 Mother 는 하나만 두세요",
   MOTHER_NOT_FOUND: () => "Mother 가 카메라에 보이게 놓아 주세요",
   INPUT_UNAVAILABLE: () => "카메라 연결을 확인해 주세요",
+  // AMBIGUOUS_ASSOCIATION(손 가림)은 일부러 안 넣는다 — 손을 떼면 저절로 풀리는 일시적 상태라
+  // 안내를 보여주면 오히려 방해된다 (deriveView() 주석, 09-27 설계 결정).
 };
 const fmtDeg = (d) => (d == null ? "?" : `${Math.abs(d).toFixed(0)}°`);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -37,16 +39,26 @@ function primaryIssue(issues) {
   return [list[0], list.slice(1)];
 }
 function human(i) {
+  // [제목(sub 큰 글씨), 상세(작업자가 그대로 따라 할 수 있는 지시)] — src/app/hud.py의 issue_message()와
+  // 같은 문구를 쓴다 (CLI 라이브 앱과 웹 UI가 같은 코드에 같은 안내를 보여주게).
   const h = `H${i.hole_id}`;
   switch (i.code) {
-    case "WRONG_BOLT": return [`${h} 볼트가 다릅니다`, `${SHORT[i.expected]} 자리에 ${SHORT[i.observed]}`];
-    case "WRONG_PART": return [`${h} 파트가 다릅니다`, `${SHORT[i.expected]} 자리에 ${SHORT[i.observed]}`];
-    case "UNEXPECTED_COMPONENT": case "EXTRA_COMPONENT": return [`${h}에서 빼세요`, `${(i.observed || "").split(",").map((c) => SHORT[c] || c).join(", ")} — 이 자리는 비워 둡니다`];
-    case "PART_ORIENTATION_ERROR": return [`${h} 파트를 똑바로 세우세요`, SHORT[i.observed] || ""];
+    case "WRONG_BOLT": case "WRONG_PART":
+      return [`${h} ${i.code === "WRONG_BOLT" ? "볼트" : "파트"}가 다릅니다`,
+              `${SHORT[i.expected]} 자리에 ${SHORT[i.observed]}가 있습니다 - 빼고 ${SHORT[i.expected]}로 바꿔주세요`];
+    case "UNEXPECTED_COMPONENT":
+      return [`${h}은 비워 둘 자리입니다`, `${(i.observed || "").split(",").map((c) => SHORT[c] || c).join(", ")}이 있습니다 - 빼주세요 (레시피에 없는 자리)`];
+    case "EXTRA_COMPONENT":
+      return [`${h}에 부품이 중복됐습니다`, `${(i.observed || "").split(",").map((c) => SHORT[c] || c).join(", ")} 중 ${SHORT[i.expected]} 하나만 남기고 나머지를 빼주세요`];
+    case "PART_ORIENTATION_ERROR":
+      return [`${h} 파트가 비뚤어졌습니다`, `${SHORT[i.expected]}가 Mother와 수직이 아닙니다 - 바르게 맞춰주세요`];
+    case "PART_WRONG_SIDE":
+      return [`${h} 부품이 반대쪽에 붙었습니다`, `${SHORT[i.expected]}가 Mother 아래쪽에 달려 있습니다 - 위쪽으로 옮겨주세요`];
     case "MISSING_BOLT": case "MISSING_PART": return [`${h} ${SHORT[i.expected] || ""} 아직`, "아직 안 꽂힘"];
     case "MATERIAL_MISSING": case "MATERIAL_EXCESS": case "MATERIAL_UNEXPECTED": {
       const [cls, need] = (i.expected || ":0").split(":"), have = (i.observed || ":0").split(":")[1];
-      return [`${SHORT[cls] || cls} ${i.code === "MATERIAL_MISSING" ? "부족" : i.code === "MATERIAL_EXCESS" ? "초과" : "이 레시피에 없음"} (필요 ${need} · 있음 ${have})`, ""];
+      const label = i.code === "MATERIAL_MISSING" ? "부족" : i.code === "MATERIAL_EXCESS" ? "초과" : "이 레시피에 없음";
+      return [`${SHORT[cls] || cls} ${label}`, `필요 ${need}개 · 현재 ${have}개`];
     }
     default: return [HOLD_TITLE[i.code] || i.code, ""];
   }
@@ -322,11 +334,14 @@ function verdictCard(p) {
       cls = "NG"; big = "NG";
       const issues = (shown.issues || []).filter((i) => !i.code.startsWith("MISSING"));
       if (issues.length) {
-        const [first, rest] = primaryIssue(issues); const [t1] = human(first);
+        const [first, rest] = primaryIssue(issues); const [t1, d1] = human(first);
         sub = t1;
         body = first.code.startsWith("WRONG")
           ? `<div class="compare"><div class="h">H${first.hole_id}</div><div><div class="cap">있어야 할 것</div>${chip("ok", SHORT[first.expected], "lg")}</div><div class="arrow">→</div><div><div class="cap">지금 있는 것</div>${chip("ng", SHORT[first.observed], "lg")}</div></div>`
+          : first.code === "PART_ORIENTATION_ERROR" || first.code === "PART_WRONG_SIDE"   // 부품 자체는 맞음 — 비우는 게 아니라 바로잡는 문제
+          ? `<div class="compare" style="grid-template-columns:70px 1fr"><div class="h">H${first.hole_id}</div><div><div class="cap">${first.code === "PART_WRONG_SIDE" ? "Mother 위쪽으로 옮겨주세요" : "Mother와 수직으로 맞춰주세요"}</div>${chip("wait", SHORT[first.expected], "lg")}</div></div>`
           : `<div class="compare" style="grid-template-columns:70px 1fr"><div class="h">H${first.hole_id}</div><div><div class="cap">이 자리는 비워 둡니다</div>${chip("ng", (first.observed || "").split(",").map((c) => SHORT[c] || c).join(", "), "lg")}</div></div>`;
+        body += `<div class="sec" style="margin-top:6px"><span class="d">${esc(d1)}</span></div>`;
         if (rest.length) body += `<div class="label">그다음 · 외 ${rest.length}건</div>` + rest.map((i) => { const [a, b] = human(i); return `<div class="sec"><span class="t">${esc(a)}</span><span class="d">${esc(b)}</span></div>`; }).join("");
       } else sub = "확인 중";
       hint = "고치면 자동으로 다시 확인합니다. 누를 것 없습니다.";

@@ -94,6 +94,19 @@ scenario("assembly card follows confirmed, not the flickering candidate", () => 
   check("NG once confirmed, detail from confirmed issues", text().includes("NG") && text().includes("H1 볼트가 다릅니다"), text().slice(0, 300));
   check("rings from confirmed", S.rings[1] === "ng" && S.rings[3] === "wait", JSON.stringify(S.rings));
   check("hole table row H1 is ng", html().includes('<tr class="ng"><td>H1</td>') && text().includes("✕ 틀림"));
+  check("primary issue also shows the actionable detail sentence, not just the title",
+        text().includes("빼고 노란 볼트로 바꿔주세요"), text().slice(0, 300));
+});
+
+// 3b. PART_WRONG_SIDE는 사람이 읽는 문장으로 나와야 한다 (raw 코드 그대로 뜨던 버그)
+scenario("PART_WRONG_SIDE gets a full Korean action sentence, not the raw code", () => {
+  const WRONG_SIDE = { status: "NG", issues: [{ code: "PART_WRONG_SIDE", hole_id: 1, expected: "part_2hole", observed: "part_2hole" }] };
+  for (let i = 0; i < 12; i++) feed({ candidate: WRONG_SIDE, confirmed: WRONG_SIDE, stable: true });
+  check("shows the action sentence, never the raw code",
+        text().includes("Mother 아래쪽에 달려 있습니다") && text().includes("위쪽으로 옮겨주세요") && !text().includes("PART_WRONG_SIDE"),
+        text().slice(0, 300));
+  check("body doesn't say to empty the slot (part itself is correct, just mispositioned)",
+        !text().includes("이 자리는 비워 둡니다"));
 });
 
 // 4. 보류(HOLD) 는 작업 화면에 없다: 손 가림이 몇 초 이어져도 마지막 NG 가 그대로, 표·카드 다시 그리기 0, 보류 말 없음
