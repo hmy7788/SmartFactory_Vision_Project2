@@ -56,6 +56,8 @@ python -m scripts.verify_materials --recipe recipe_1
 
 - [API·출력·담당별 다음 작업](docs/state_machine_handoff.md)
 - [샘플 검증 결과와 알려진 모델 오류](docs/validation_2026-09-22.md)
+- [웹 UI — 실행법·화면·payload 계약·CameraSource 채우기](docs/web.md) (`python -m web.server`, 카메라·모델 없이 데모로 돈다)
+- [저장 계층 — SQLite 에 무엇을 어떻게 남기는가](docs/storage.md)
 - [개발 가이드](state_machine_development_guidelines.md)
 - [설정](config/mvp.json), [Recipe](config/recipes/recipe_1.json), [클래스 매핑](config/class_mapping.json)
 
