@@ -29,11 +29,14 @@
 """
 
 import argparse
+import json
 import math
 import sys
 import time
 from fractions import Fraction
 from pathlib import Path
+from contextlib import ExitStack
+from dataclasses import asdict
 
 import cv2
 import numpy as np
@@ -47,6 +50,7 @@ from camera_utils import remove_droidcam_watermark  # noqa: E402
 from src.app.config import load_config  # noqa: E402
 from src.app.hud import Hud  # noqa: E402
 from src.app.inspection_service import InspectionService  # noqa: E402
+from src.app.evaluation_log import EvaluationLog, file_identity, git_identity  # noqa: E402
 from src.process.recipe import load_recipe  # noqa: E402
 from src.vision.detection_adapter import from_ultralytics  # noqa: E402
 from src.vision.rtdetr_adapter import RTDETRAdapter  # noqa: E402
@@ -73,7 +77,7 @@ def open_camera(args):
     return cap
 
 
-def main():
+def run(resources):
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
@@ -104,7 +108,19 @@ def main():
                         help="이 시간(ms)보다 프레임 간격이 크면 FRAME_GAP(처리 속도 부족)으로 판정을 보류한다. "
                              "GPU 없이 CPU로 돌리면 추론이 느려 매 프레임 걸리므로 크게 올린다(예: 5000). "
                              "생략하면 config 값 사용")
+    parser.add_argument('--device', default=None, help='cpu or CUDA device index')
+    parser.add_argument('--imgsz', type=int, default=640)
+    parser.add_argument('--eval-log', type=Path, help='New directory for per-frame evaluation evidence')
+    parser.add_argument('--video-clock', choices=['pts', 'cfr'], default='pts')
     args = parser.parse_args()
+    if args.eval_log and not args.video:
+        parser.error('--eval-log requires --video')
+    if args.eval_log and args.eval_log.exists():
+        parser.error('--eval-log already exists; choose a new run directory')
+    if args.max_frames < 0 or args.imgsz <= 0:
+        parser.error('Invalid frame limit or image size')
+    if args.max_frame_gap_ms is not None and (not math.isfinite(args.max_frame_gap_ms) or args.max_frame_gap_ms <= 0):
+        parser.error('--max-frame-gap-ms must be finite and positive')
 
     weights = Path(args.weights) if args.weights else DEFAULT_WEIGHTS[args.model_type]
     if weights is None:
@@ -119,37 +135,74 @@ def main():
     adapter = None if args.model_type == "yolo-obb" else RTDETRAdapter()
     hud = Hud(config)
     conf = args.conf if args.conf is not None else config["confidence_threshold"]
+    predict_options = dict(conf=conf, verbose=False, imgsz=args.imgsz)
+    if args.device is not None:
+        predict_options['device'] = args.device
+    mapping = json.loads((ROOT/'config/class_mapping.json').read_text(encoding='utf-8'))
 
     print(f"[INSPECT] 모델 로드 ({args.model_type}): {weights}", flush=True)
     model = RTDETR(str(weights)) if args.model_type == "rtdetr" else YOLO(str(weights))
 
     is_video = args.video is not None
     cap = cv2.VideoCapture(str(args.video)) if is_video else open_camera(args)
+    resources.callback(cv2.destroyAllWindows)
+    resources.callback(cap.release)
     if not cap.isOpened():
-        print(f"[INSPECT] 입력을 열 수 없습니다: {args.video if is_video else args.camera}", flush=True)
-        return
-    video_fps = (cap.get(cv2.CAP_PROP_FPS) or 30.0) if is_video else 15.0
+        raise RuntimeError(f'Cannot open input: {args.video if is_video else args.camera}')
+    video_fps = cap.get(cv2.CAP_PROP_FPS) if is_video else 15.0
+    if not math.isfinite(video_fps) or video_fps <= 0:
+        raise ValueError('Invalid video FPS')
+    logger = None
+    if args.eval_log:
+        import ultralytics
+        logger = resources.enter_context(EvaluationLog(args.eval_log, {
+            'video': file_identity(args.video), 'weights': file_identity(weights),
+            'model_type': args.model_type, 'recipe_id': service.recipe.recipe_id,
+            'recipe': asdict(service.recipe), 'config': config, 'prediction_options': predict_options,
+            'class_mapping': mapping, 'video_fps': video_fps,
+            'source_frame_count': int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+            'timestamp_source': args.video_clock, 'offline_replay': True,
+            'droidcam_watermark': args.droidcam_watermark,
+            'opencv_version': cv2.__version__, 'ultralytics_version': ultralytics.__version__,
+            'git': git_identity(ROOT), 'command': sys.argv,
+            'timing_scope': 'frame read + preprocessing + perception + service + HUD; excludes log/write/display',
+        }))
     # 첫 추론은 CUDA 초기화로 수 초가 걸려서, 그대로 두면 시작 직후 FRAME_GAP(250ms 초과)으로
     # 판정이 한 번 끊긴다 — 타임스탬프를 재기 전에 미리 한 번 돌려둔다.
-    model.predict(np.zeros((args.height, args.width, 3), np.uint8), conf=conf, verbose=False)
+    model.predict(np.zeros((args.height, args.width, 3), np.uint8), **predict_options)
     print(f"[INSPECT] 시작 — {service.recipe.recipe_id}, 'q' 종료 / [1/2/3] 레시피 / [n] 새 제품", flush=True)
 
     writer = None
     fps, previous_key, frame_index = 0.0, None, 0
     started = last_tick = time.monotonic()
+    previous_timestamp = -1.0
     while True:
+        if args.max_frames and frame_index >= args.max_frames:
+            if logger:
+                logger.metadata['stop_reason'] = 'max_frames'
+            break
+        processing_started = time.perf_counter()
         ok, frame = cap.read()
-        if not ok or (args.max_frames and frame_index >= args.max_frames):
+        if not ok:
+            if logger:
+                count = logger.metadata['source_frame_count']
+                complete = count > 0 and frame_index >= count
+                logger.metadata.update(completed=complete, stop_reason='eof' if complete else 'read_failed_or_unknown_length')
             break
         if args.droidcam_watermark:
             frame = remove_droidcam_watermark(frame)
 
-        timestamp_ms = frame_index / video_fps * 1000.0 if is_video else (time.monotonic() - started) * 1000.0
-        result = model.predict(frame, conf=conf, verbose=False)[0]
+        timestamp_ms = ((cap.get(cv2.CAP_PROP_POS_MSEC) if args.video_clock == 'pts'
+                         else frame_index / video_fps * 1000.0) if is_video
+                        else (time.monotonic() - started) * 1000.0)
+        if not math.isfinite(timestamp_ms) or timestamp_ms <= previous_timestamp:
+            raise ValueError('Non-increasing video PTS. Use --video-clock cfr only for constant-FPS input.')
+        previous_timestamp = timestamp_ms
+        result = model.predict(frame, **predict_options)[0]
         if adapter is not None:
             detection_frame, info = adapter.convert(result, frame, timestamp_ms)
         else:
-            detection_frame = from_ultralytics(result, frame_index, timestamp_ms)
+            detection_frame = from_ultralytics(result, frame_index, timestamp_ms, mapping)
             mother = next((d for d in detection_frame.detections if d.class_name == "mother_part"), None)
             info = {"angle_source": "obb", "raw_boxes": len(detection_frame.detections),
                     "after_dedup": len(detection_frame.detections),
@@ -168,11 +221,17 @@ def main():
             previous_key = key
 
         annotated = hud.draw(frame, snapshot, detection_frame, info, service.recipe, fps)
+        if logger:
+            logger.write(frame_index, timestamp_ms, snapshot, detection_frame, info,
+                         (time.perf_counter() - processing_started)*1000)
         if args.save_video:
             if writer is None:
                 args.save_video.parent.mkdir(parents=True, exist_ok=True)
                 writer = cv2.VideoWriter(str(args.save_video), cv2.VideoWriter_fourcc(*"mp4v"), video_fps,
                                          (annotated.shape[1], annotated.shape[0]))
+                resources.callback(writer.release)
+                if not writer.isOpened():
+                    raise RuntimeError('Cannot open output video writer')
             writer.write(annotated)
         frame_index += 1
 
@@ -180,7 +239,12 @@ def main():
             cv2.imshow("RT-DETR Live Inspection (q: quit)", annotated)
             pressed = cv2.waitKey(1) & 0xFF
             if pressed == ord("q"):
+                if logger:
+                    logger.metadata['stop_reason'] = 'user_quit'
                 break
+            if logger and pressed in (ord('1'), ord('2'), ord('3'), ord('n')):
+                print('[EVAL] Recipe changes/resets are disabled while recording evaluation evidence.')
+                continue
             if pressed in (ord("1"), ord("2"), ord("3")):
                 service.reset(recipes[int(chr(pressed))])
                 if adapter is not None:
@@ -198,6 +262,11 @@ def main():
         print(f"[INSPECT] 저장: {args.save_video}", flush=True)
     cv2.destroyAllWindows()
     print(f"[INSPECT] 종료 — {frame_index}프레임 처리", flush=True)
+
+
+def main():
+    with ExitStack() as resources:
+        run(resources)
 
 
 if __name__ == "__main__":
