@@ -1,0 +1,42 @@
+===== train (사진 831장) =====
+-- 모델(완성 조립체) --
+  model_a: 17장
+  model_b: 34장
+  model_c: 34장
+  소계: 85장
+-- 단일 부품(ICONIC) --
+  bolt_1: 110장
+  bolt_2: 110장
+  mother_part: 85장
+  part_2hole: 85장
+  part_3hole: 85장
+  소계: 475장
+-- 기타(피킹영상 프레임 등) --
+  recipe: 162장
+  2_hole_frame: 34장
+  5_hole_frame: 33장
+  3_hole_frame: 26장
+  b_frame: 16장
+  소계: 271장
+
+===== test (사진 149장) =====
+-- 모델(완성 조립체) --
+  model_a: 3장
+  model_b: 6장
+  model_c: 6장
+  소계: 15장
+-- 단일 부품(ICONIC) --
+  bolt_1: 20장
+  bolt_2: 19장
+  mother_part: 15장
+  part_2hole: 15장
+  part_3hole: 15장
+  소계: 84장
+-- 기타(피킹영상 프레임 등) --
+  recipe: 30장
+  2_hole_frame: 6장
+  5_hole_frame: 6장
+  3_hole_frame: 5장
+  b_frame: 3장
+  소계: 50장
+

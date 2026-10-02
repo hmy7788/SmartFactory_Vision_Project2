@@ -16,11 +16,11 @@
 
 현재 구현/실행법은 README.md, 설정은 config/mvp.json, 검증은 tests/test_mvp.py를 참고한다.
 
-작성 기준: 2026-09-22. 현재 루트의 `agent.md`, `system_overview.md`, `technical_specification.md`, `verification_specification.md`를 읽고 작성했다. 원문에 적힌 `docs/` 경로와 달리 현재 네 문서는 루트에 있다. 이 문서는 구현 계획이며 기존 명세를 대체하지 않는다. 아래의 **제안**과 **팀 확정 필요** 항목은 아직 확정 요구사항이 아니다.
+작성 기준: 2026-09-22. 당시 루트에 있던 `agent.md`, `system_overview.md`, `technical_specification.md`, `verification_specification.md`를 읽고 작성했다 (2026-10-01에 원문 경로대로 `docs/`로 이동함). 이 문서는 구현 계획이며 기존 명세를 대체하지 않는다. 아래의 **제안**과 **팀 확정 필요** 항목은 아직 확정 요구사항이 아니다.
 
 ## 사용자 확정사항 및 참고 이미지 (2026-09-22 추가)
 
-`recipe_img/recipe_1.jpg`, `recipe_2.jpg`, `recipe_3.jpg`를 확인했다. 사진에서 Mother의 왼쪽부터 H1~H5로 해석하면 아래 사용자 지정 조합과 일치한다. 사진의 Part들은 Mother에서 같은 쪽으로 뻗어 있다.
+`scripts/recipe_img/recipe_1.jpg`, `recipe_2.jpg`, `recipe_3.jpg`를 확인했다. 사진에서 Mother의 왼쪽부터 H1~H5로 해석하면 아래 사용자 지정 조합과 일치한다. 사진의 Part들은 Mother에서 같은 쪽으로 뻗어 있다.
 
 | Recipe | 요구 조립 |
 |---|---|
