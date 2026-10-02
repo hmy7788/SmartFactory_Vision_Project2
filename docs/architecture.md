@@ -151,16 +151,18 @@ ASSEMBLING (조립 검사)
 
 런타임 흐름과 별개로, 데이터 준비·모델 학습용 스크립트들이 있다 (실행 시점에 판정 코어를 쓰지 않음):
 
-- `src/detection/`: ICONIC 자동 라벨링, 라벨 데이터 병합, YOLO-OBB/RT-DETR 데이터셋 준비·학습·평가
-- `src/detection/rt-detr/`: RT-DETR 전용 학습/평가/미리보기 스크립트
-- `docs/rt-detr-experiment.md`, `docs/cropped-dataset.md`: 실험 기록
-- `src/classification/`, `src/recipe/`: **빈 스텁 패키지** — CLAUDE.md 초안의 디렉터리 구조에서 남은
-  자리로, 딥러닝 분류 트랙(완성 조립체 Model A/B/C 분류, CLAUDE.md 3-2 확정 항목)은 아직 이 저장소에
-  구현되지 않았다. 레시피는 실제로는 `src/process/recipe.py`에 있다.
+- `src/detection/`: ICONIC 자동 라벨링, 라벨 데이터 병합, 원본 소스 → 통합 데이터셋(`prepare_obb_from_sources.py`)
+- `src/detection/yolo11/`: YOLO11n-OBB 데이터셋 빌드·학습·평가(mAP·긴 변 각도 오차·CPU 속도)·실시간 확인
+- `src/detection/rt-detr/`: RT-DETR 전용 학습/평가 스크립트
+- `src/classification/`: 완성 조립체 Model A/B/C 분류(ResNet-18 파인튜닝, CLAUDE.md 3-2) — `docs/classification.md`
+- `scripts/check_weights.py` + `src/vision/model_loader.py`: 받은 가중치가 YOLO/RT-DETR 중 무엇인지 판별하고 시스템에 맞는지 점검
+- `scripts/evaluate_video.py` + `src/app/evaluation_log.py`: 영상 기반 공정 평가(`live_inspection.py --eval-log`) — `docs/video-evaluation.md`
+- 학습 결과 가중치는 모두 `weights/`, 학습 로그는 `runs/`, 리포트는 `reports/`
+- 실험 기록: `docs/rt-detr-experiment.md`, `docs/detection_obb.md`, `docs/cropped-dataset.md`
 
 ## 10. 테스트 — `tests/`
 
-118개 (`python -m pytest tests -q`).
+170개 (`python -m pytest tests -q`) + MES JUnit 13개(`mes/test_mes.cmd`).
 
 | 파일 | 대상 |
 |---|---|
@@ -168,10 +170,9 @@ ASSEMBLING (조립 검사)
 | `test_relaxed_orientation.py` | mother 아래쪽=NG + 180도 회전 인식 (§5) |
 | `test_rtdetr_adapter.py`, `test_rule_based_adapter.py` | §2의 두 어댑터, 합성 이미지로 모델 없이 검증 |
 | `test_web.py`, `test_web_ui.js`(node) | 웹 UI 전체(소스/파이프라인/서버/프론트 파생 상태) |
-| `test_store.py` | SQLite 이력 저장 |
-
-⚠️ `test_web.py` 일부(SQLite 임시폴더 정리, node 서브프로세스 cp949 콘솔 출력)는 이 Windows 개발
-환경에서 pre-existing으로 실패한다 — `origin/yuseong/ui-demo` 원본에서도 재현됨, 코드 문제 아님.
+| `test_store.py`, `test_mes_link.py`, `test_clear_wait.py` | SQLite 이력 저장, MES 연동, 작업 완료 후 대기 |
+| `test_obb_dataset.py`, `test_model_loader.py` | YOLO-OBB 데이터셋·평가, 가중치 로더 |
+| `test_video_evaluation.py` | 영상 평가 채점 |
 
 ## 11. 파일 맵 요약
 
@@ -183,11 +184,12 @@ src/
 ├── process/           판정/상태머신/레시피 — §5
 ├── app/               InspectionService(코어 진입점), config, CLI HUD
 ├── rule_based/         classical CV — §6
-├── detection/          (오프라인) 데이터셋/학습 — §9
-└── classification/, recipe/   빈 스텁 — §9
+├── detection/          (오프라인) 데이터셋/학습 — yolo11/, rt-detr/ — §9
+└── classification/     완성체 Model A/B/C 분류 — §9
 scripts/
 ├── live_inspection.py  CLI 라이브 검사 앱
 ├── run_ui.py            웹 UI 실행기 (가중치/카메라 선택)
+├── evaluate_video.py, check_weights.py   영상 공정 평가 채점, 가중치 점검
 └── replay_detections.py, verify_materials.py, visualize_rois.py, demo_data.py   개발용 보조 스크립트
 web/                    웹 UI(FastAPI/Starlette + 순수 JS) — §7
 config/                 판정 설정 + 레시피 — §8

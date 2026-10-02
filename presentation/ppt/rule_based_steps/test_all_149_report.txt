@@ -1,0 +1,165 @@
+total images in test split: 149
+
+[완성 조립체 15장] 14/15 정확히 판별
+[비조립체 134장(낱개 부품+피킹영상 프레임)] None(무판정) 반환 128장 / 엉뚱하게 Model A/B/C로 오판 6장
+
+전체 149장 처리 시간: mean=6.5ms median=5.3ms max=21.6ms, throughput=155.0 img/s
+
+--- 오판(비조립체인데 Model A/B/C로 잘못 판정한 경우) ---
+recipe3_frame00103_014_jpg.rf.TQ3vpa4hUQBj0ZyZfeLW.jpg -> MODEL_C
+recipe3_frame00118_016_jpg.rf.NbZunsgnqrgpsI0LxEmy.jpg -> MODEL_C
+recipe3_frame00350_048_jpg.rf.DhmHBkKSAnpA811rYou9.jpg -> MODEL_C
+recipe3_process_frame00171_017_jpg.rf.0ic8PEzqDIYLT4YFWE9H.jpg -> MODEL_C
+recipe3_process_frame00279_029_jpg.rf.L4VcUEtXLXuBzNIXsp0v.jpg -> MODEL_C
+recipe3_process_frame00474_049_jpg.rf.hnYGfjdtjqpxixpVz24A.jpg -> MODEL_C
+
+--- 전체 목록 ---
+2_hole_frame00005_000_jpg.rf.UhXNuu3PYyS108sPMd96.jpg        non-assembly   expect=-        got=None OK
+2_hole_frame00075_007_jpg.rf.m1WMZZBTqQe4qdFGh1CD.jpg        non-assembly   expect=-        got=None OK
+2_hole_frame00083_009_jpg.rf.jjEKyGpCGukvpb5Mkc3E.jpg        non-assembly   expect=-        got=None OK
+2_hole_frame00155_021_jpg.rf.CdkCwI0dxoI1VcrpQ2DE.jpg        non-assembly   expect=-        got=None OK
+2_hole_frame00178_025_jpg.rf.fKMzv5aGc0hHILM4jA9n.jpg        non-assembly   expect=-        got=None OK
+2_hole_frame00228_033_jpg.rf.tGmDmDqTfbYcNYe3MGgR.jpg        non-assembly   expect=-        got=None OK
+3_hole_frame00118_019_jpg.rf.S0M5imefuk9K1TVZZUUN.jpg        non-assembly   expect=-        got=None OK
+3_hole_frame00124_020_jpg.rf.BP80ouZr999Ycf0SrdCC.jpg        non-assembly   expect=-        got=None OK
+3_hole_frame00178_029_jpg.rf.XopxQvRZhu6yRPtNAocf.jpg        non-assembly   expect=-        got=None OK
+3_hole_frame00183_030_jpg.rf.ydSwbk3itve2Ugzli4CB.jpg        non-assembly   expect=-        got=None OK
+3_hole_frame00269_040_jpg.rf.J7vP7xIisOLJxMgGGAcj.jpg        non-assembly   expect=-        got=None OK
+5_hole_frame00011_001_jpg.rf.xZmfiOa1zeRNigoC4mpa.jpg        non-assembly   expect=-        got=None OK
+5_hole_frame00072_012_jpg.rf.7zjFkcbr0kIlrJteyCLK.jpg        non-assembly   expect=-        got=None OK
+5_hole_frame00114_019_jpg.rf.lRzM0C2z4UYyyCXXnI9q.jpg        non-assembly   expect=-        got=None OK
+5_hole_frame00132_022_jpg.rf.UnFou9jeLeoo2sUby6zb.jpg        non-assembly   expect=-        got=None OK
+5_hole_frame00179_029_jpg.rf.cuAaxel7fSXiLVgUF0nB.jpg        non-assembly   expect=-        got=None OK
+5_hole_frame00248_041_jpg.rf.173GPJYC7sElkF6roogB.jpg        non-assembly   expect=-        got=None OK
+b_frame00027_004_jpg.rf.y2bE2FvIQ3zwyy1nay5B.jpg             non-assembly   expect=-        got=None OK
+b_frame00070_012_jpg.rf.6voTvAQFiy11NQ0WDNLd.jpg             non-assembly   expect=-        got=None OK
+b_frame00082_015_jpg.rf.JT2YVNHkjy9CPg8WLSoV.jpg             non-assembly   expect=-        got=None OK
+bolt_1_008.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_010.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_017.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_022.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_031.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_033.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_037.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_048.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_052.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_053.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_066.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_068.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_075.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_080.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_083.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_086.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_094.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_096.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_100.jpg                                               non-assembly   expect=-        got=None OK
+bolt_1_127.png                                               non-assembly   expect=-        got=None OK
+bolt_2_004.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_006.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_007.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_010.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_012.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_030.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_041.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_046.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_051.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_053.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_054.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_057.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_058.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_062.jpg                                               non-assembly   expect=-        got=None OK
+bolt_2_108.png                                               non-assembly   expect=-        got=None OK
+bolt_2_115.png                                               non-assembly   expect=-        got=None OK
+bolt_2_117.png                                               non-assembly   expect=-        got=None OK
+bolt_2_123.png                                               non-assembly   expect=-        got=None OK
+bolt_2_125.png                                               non-assembly   expect=-        got=None OK
+model_a_006.png                                              ASSEMBLY       expect=model_a  got=MODEL_A OK
+model_a_008.png                                              ASSEMBLY       expect=model_a  got=MODEL_A OK
+model_a_012.png                                              ASSEMBLY       expect=model_a  got=MODEL_A OK
+model_b_005.png                                              ASSEMBLY       expect=model_b  got=MODEL_B OK
+model_b_012.png                                              ASSEMBLY       expect=model_b  got=MODEL_B OK
+model_b_019.png                                              ASSEMBLY       expect=model_b  got=MODEL_B OK
+model_b_024.png                                              ASSEMBLY       expect=model_b  got=MODEL_B OK
+model_b_029.png                                              ASSEMBLY       expect=model_b  got=None X
+model_b_033.png                                              ASSEMBLY       expect=model_b  got=MODEL_B OK
+model_c_001.png                                              ASSEMBLY       expect=model_c  got=MODEL_C OK
+model_c_021.png                                              ASSEMBLY       expect=model_c  got=MODEL_C OK
+model_c_027.png                                              ASSEMBLY       expect=model_c  got=MODEL_C OK
+model_c_028.png                                              ASSEMBLY       expect=model_c  got=MODEL_C OK
+model_c_033.png                                              ASSEMBLY       expect=model_c  got=MODEL_C OK
+model_c_037.png                                              ASSEMBLY       expect=model_c  got=MODEL_C OK
+mother_part_005.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_009.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_015.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_016.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_023.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_037.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_040.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_047.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_054.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_059.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_064.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_067.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_075.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_079.jpg                                          non-assembly   expect=-        got=None OK
+mother_part_081.jpg                                          non-assembly   expect=-        got=None OK
+part_2hole_016.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_023.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_024.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_026.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_035.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_038.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_040.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_042.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_049.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_050.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_061.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_066.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_077.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_082.jpg                                           non-assembly   expect=-        got=None OK
+part_2hole_089.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_002.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_012.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_016.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_027.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_031.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_042.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_048.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_057.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_058.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_067.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_068.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_075.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_081.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_083.jpg                                           non-assembly   expect=-        got=None OK
+part_3hole_096.jpg                                           non-assembly   expect=-        got=None OK
+recipe1_process_frame00039_002_jpg.rf.UMizsvA8aCbvn3nlC6qc.jpg non-assembly   expect=-        got=None OK
+recipe1_process_frame00095_006_jpg.rf.4NsY1pSY9aq2SFSF8Ah0.jpg non-assembly   expect=-        got=None OK
+recipe1_process_frame00129_008_jpg.rf.RCKyFsO6S8Qzq4PhjcOk.jpg non-assembly   expect=-        got=None OK
+recipe1_process_frame00149_010_jpg.rf.TFiI4YQ071hXnlZ0VULI.jpg non-assembly   expect=-        got=None OK
+recipe1_process_frame00303_020_jpg.rf.kV4MGesy49SyDrmMrIBl.jpg non-assembly   expect=-        got=None OK
+recipe1_process_frame00334_022_jpg.rf.rIXvFHCh8O4952CbPsX5.jpg non-assembly   expect=-        got=None OK
+recipe1_process_frame00552_037_jpg.rf.Cc3DPpdan8mzpt5YzsX4.jpg non-assembly   expect=-        got=None OK
+recipe1_process_frame00566_038_jpg.rf.JT4o0jcMGXe0AdZzpDG4.jpg non-assembly   expect=-        got=None OK
+recipe2_process_frame00308_022_jpg.rf.0zqw1LD2Kx2vfNcCuOkb.jpg non-assembly   expect=-        got=None OK
+recipe2_process_frame00320_023_jpg.rf.g2Hh3xQL2MfWPg9qm7qB.jpg non-assembly   expect=-        got=None OK
+recipe2_process_frame00338_024_jpg.rf.Z2bUdZta8UVoR6m6TUPY.jpg non-assembly   expect=-        got=None OK
+recipe2_process_frame00453_033_jpg.rf.AprRdpJCAT7TCLhlBgjA.jpg non-assembly   expect=-        got=None OK
+recipe2_process_frame00467_034_jpg.rf.NdChGR79Lb22r4kkxi0v.jpg non-assembly   expect=-        got=None OK
+recipe2_process_frame00514_037_jpg.rf.BJyPDiRd6CrEL2CdgO6H.jpg non-assembly   expect=-        got=None OK
+recipe2_process_frame00671_048_jpg.rf.zKUDcXaJX2P0ReRH6aIj.jpg non-assembly   expect=-        got=None OK
+recipe2_process_frame00682_049_jpg.rf.OwlplyQgTCSOf3L1BOij.jpg non-assembly   expect=-        got=None OK
+recipe3_frame00103_014_jpg.rf.TQ3vpa4hUQBj0ZyZfeLW.jpg       non-assembly   expect=-        got=MODEL_C X
+recipe3_frame00118_016_jpg.rf.NbZunsgnqrgpsI0LxEmy.jpg       non-assembly   expect=-        got=MODEL_C X
+recipe3_frame00135_018_jpg.rf.BLb3BIxcJSauCoCeKOVD.jpg       non-assembly   expect=-        got=None OK
+recipe3_frame00210_029_jpg.rf.iM6kfdNNLmdffjdszGhz.jpg       non-assembly   expect=-        got=None OK
+recipe3_frame00238_032_jpg.rf.dtYIM4oPlvP79T9zJLqu.jpg       non-assembly   expect=-        got=None OK
+recipe3_frame00258_035_jpg.rf.8YJtFU45VRZ0xXkj2wiO.jpg       non-assembly   expect=-        got=None OK
+recipe3_frame00338_046_jpg.rf.sEvSMI1G95YBzvfuwiPa.jpg       non-assembly   expect=-        got=None OK
+recipe3_frame00350_048_jpg.rf.DhmHBkKSAnpA811rYou9.jpg       non-assembly   expect=-        got=MODEL_C X
+recipe3_process_frame00046_004_jpg.rf.ADAzO0Tvi5R3Xp7GoeiP.jpg non-assembly   expect=-        got=None OK
+recipe3_process_frame00068_007_jpg.rf.6ZMB2LW9UqvqHBDs76bR.jpg non-assembly   expect=-        got=None OK
+recipe3_process_frame00106_011_jpg.rf.clMBY4kaEcO5t6HVheGR.jpg non-assembly   expect=-        got=None OK
+recipe3_process_frame00171_017_jpg.rf.0ic8PEzqDIYLT4YFWE9H.jpg non-assembly   expect=-        got=MODEL_C X
+recipe3_process_frame00279_029_jpg.rf.L4VcUEtXLXuBzNIXsp0v.jpg non-assembly   expect=-        got=MODEL_C X
+recipe3_process_frame00474_049_jpg.rf.hnYGfjdtjqpxixpVz24A.jpg non-assembly   expect=-        got=MODEL_C X

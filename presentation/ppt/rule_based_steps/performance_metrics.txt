@@ -1,0 +1,14 @@
+photo count: 100
+mean latency: 13.0 ms
+median latency: 10.8 ms
+p95 latency: 22.2 ms
+max latency: 24.2 ms
+min latency: 6.5 ms
+throughput: 76.6 images/sec (single thread, CPU)
+
+confusion (expected, got) -> count:
+  ('model_a', 'MODEL_A'): 20
+  ('model_b', None): 2
+  ('model_b', 'MODEL_B'): 38
+  ('model_c', None): 1
+  ('model_c', 'MODEL_C'): 39

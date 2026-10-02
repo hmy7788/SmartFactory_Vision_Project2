@@ -1,0 +1,19 @@
+전체 149장, 처리 149장
+
+혼동행렬 (행=정답, 열=예측)
+TRUE\PRED MODEL_A   MODEL_B   MODEL_C   NONE      
+MODEL_A   3         0         0         0         
+MODEL_B   0         5         0         1         
+MODEL_C   0         0         6         0         
+NONE      0         0         6         128       
+
+클래스별 precision / recall / F1
+  MODEL_A    precision=1.000  recall=1.000  f1=1.000  support=3
+  MODEL_B    precision=1.000  recall=0.833  f1=0.909  support=6
+  MODEL_C    precision=0.500  recall=1.000  f1=0.667  support=6
+  NONE       precision=0.992  recall=0.955  f1=0.973  support=134
+
+전체 정확도(4-클래스: A/B/C/NONE 전부 포함) = 142/149 = 95.3%
+
+처리속도: mean=6.1ms median=5.2ms max=21.3ms min=2.1ms
+처리량: 162.6 장/초

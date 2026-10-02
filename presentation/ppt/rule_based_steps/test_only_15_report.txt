@@ -1,0 +1,17 @@
+model_a: 3/3
+model_b: 5/6
+model_c: 6/6
+TOTAL: 14/15
+
+mean latency: 14.0 ms, median: 12.3 ms, max: 24.0 ms
+throughput: 71.6 img/s
+
+confusion (expected, got):
+  ('model_a', 'MODEL_A'): 3
+  ('model_b', None): 1
+  ('model_b', 'MODEL_B'): 5
+  ('model_c', 'MODEL_C'): 6
+
+--- failures (1) ---
+data\aabb\images\test\model_b_029.png (expected model_b) -> got None
+  MODEL_B 형태는 맞지만 배치 오류 — 구멍1개짜리 막대 접합점: bolt_1 자리에 bolt_2 사용됨; 구멍1개짜리 막대가 2번 자리(기대: 0번)
