@@ -78,12 +78,12 @@ python -m scripts.evaluate_video --annotation evaluation/annotations/eval_vid.js
 | 모델 | 명령 | 문서 |
 |---|---|---|
 | YOLO11n-OBB | `run_train_obb.cmd` 더블클릭, 또는 `python -m src.detection.yolo11.prepare_obb_dataset --labels <라벨> --images <사진>` → `python -m src.detection.yolo11.train_yolo_obb` | [docs/detection_obb.md](detection_obb.md) |
+| YOLO26n-OBB | `python -m src.detection.yolo26.train_yolo26_obb --data <data.yaml>` (`--test-only --weights weights/yolo26_obb_parts_50.pt`로 평가만) | 스크립트 docstring |
 | YOLO-OBB 평가 | `python -m src.detection.yolo11.evaluate_obb --weights weights/yolo_obb_parts.pt` (mAP · 긴 변 각도 오차 · CPU 속도) | 〃 |
 | RT-DETR-L | `python src/detection/rt-detr/train_rtdetr.py --data <data.yaml> --epochs 10` | [docs/rt-detr-experiment.md](rt-detr-experiment.md) |
 | 완성체 분류 (ResNet-18) | `python -m src.classification.train --data <aabb 폴더> --out weights/classifier_resnet18.pt` | [docs/classification.md](classification.md) |
 
 학습이 끝나면 최종 가중치는 자동으로 `weights/`에 복사되고, 학습 로그·plot은 `runs/`, 발표용 리포트는 `reports/`에 남는다.
-YOLO26n-OBB는 같은 학습 스크립트에서 `--model yolo26n-obb.pt --out weights/yolo26_obb_parts.pt`로 베이스만 바꿔 학습한다.
 
 받은 가중치가 시스템에 맞는지는 카메라 없이 확인할 수 있다:
 

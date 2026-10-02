@@ -153,6 +153,7 @@ ASSEMBLING (조립 검사)
 
 - `src/detection/`: ICONIC 자동 라벨링, 라벨 데이터 병합, 원본 소스 → 통합 데이터셋(`prepare_obb_from_sources.py`)
 - `src/detection/yolo11/`: YOLO11n-OBB 데이터셋 빌드·학습·평가(mAP·긴 변 각도 오차·CPU 속도)·실시간 확인
+- `src/detection/yolo26/`: YOLO26n-OBB 학습·test 평가
 - `src/detection/rt-detr/`: RT-DETR 전용 학습/평가 스크립트
 - `src/classification/`: 완성 조립체 Model A/B/C 분류(ResNet-18 파인튜닝, CLAUDE.md 3-2) — `docs/classification.md`
 - `scripts/check_weights.py` + `src/vision/model_loader.py`: 받은 가중치가 YOLO/RT-DETR 중 무엇인지 판별하고 시스템에 맞는지 점검
@@ -184,7 +185,7 @@ src/
 ├── process/           판정/상태머신/레시피 — §5
 ├── app/               InspectionService(코어 진입점), config, CLI HUD
 ├── rule_based/         classical CV — §6
-├── detection/          (오프라인) 데이터셋/학습 — yolo11/, rt-detr/ — §9
+├── detection/          (오프라인) 데이터셋/학습 — yolo11/, yolo26/, rt-detr/ — §9
 └── classification/     완성체 Model A/B/C 분류 — §9
 scripts/
 ├── live_inspection.py  CLI 라이브 검사 앱

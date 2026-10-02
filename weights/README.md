@@ -8,12 +8,12 @@
 | 파일 | 역할 |
 |---|---|
 | `yolo_obb_parts.pt` | 메인 파이프라인(YOLO11n-OBB) 학습 완료 가중치 — 라이브 검사 기본값(`--model-type yolo-obb`) |
-| `yolo26_obb_parts_50.pt` | YOLO26n-OBB 학습 완료 가중치 (비교 실험용) |
+| `yolo26_obb_parts_50.pt` | YOLO26n-OBB 학습 완료 가중치 (50 epoch, `src/detection/yolo26/train_yolo26_obb.py`) |
 | `yolo26n.pt` | YOLO26n 사전학습 베이스 체크포인트 (COCO, fine-tuning 전 원본 — 프로젝트 모델 아님) |
 | `yolo11n-obb.pt` | YOLO11n-OBB 사전학습 베이스 체크포인트 (`train_yolo_obb.py` 기본 `--model`) |
 | `rtdetr-l.pt` | RT-DETR-L 사전학습 베이스 체크포인트 (`train_rtdetr.py` 기본 `--model`) |
 
-학습 스크립트(`src/detection/yolo11/train_yolo_obb.py`, `src/detection/rt-detr/train_rtdetr.py`)는 학습이 끝나면
+학습 스크립트(`src/detection/yolo11/train_yolo_obb.py`, `src/detection/yolo26/train_yolo26_obb.py`, `src/detection/rt-detr/train_rtdetr.py`)는 학습이 끝나면
 최종 가중치를 자동으로 이 폴더에 복사한다 — `runs/`(Ultralytics 자체 학습 로그·plot) 안을 뒤질 필요 없음.
 
 클래스: 볼트_주황, 볼트_노랑, 나무_5구멍, 나무_3구멍, 나무_2구멍. `config/class_mapping.json`으로 내부 이름을 연결한다.
