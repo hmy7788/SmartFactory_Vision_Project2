@@ -15,7 +15,7 @@
 사용 (web/pipeline.py 에서)::
 
     store = Store("data/pokayoke.db")
-    run = store.open_run("model/yolo_obb_parts.pt", config)
+    run = store.open_run("weights/yolo_obb_parts.pt", config)
     product = store.open_product(run, recipe.recipe_id, started_ms=first_ts)
     ...
     snapshot = service.update(frame)

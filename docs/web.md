@@ -5,11 +5,11 @@
 ## 실행
 
 ```bash
-pip install -r requirements.txt          # fastapi(→ starlette) + uvicorn[standard](→ websockets) 가 들어 있다
+pip install -r requirements.txt          # starlette + uvicorn[standard](→ websockets) 가 들어 있다
 python -m web.server                     # 합성 데모, http://localhost:8000
 python -m web.server --speed 2           # 데모 시나리오 2배속 (발표 리허설)
 python -m web.server --source jsonl --jsonl detections.jsonl     # 기록한 검출 재생
-python -m web.server --source camera     # 웹캠 + RT-DETR(기본, runs/rtdetr/full_run/weights/best.pt)
+python -m web.server --source camera     # 웹캠 + RT-DETR(기본, weights/rtdetr_best.pt)
 python -m web.server --source camera --model-type yolo-obb --weights model/내모델.pt   # --model-type 아래 참고
 python -m scripts.run_ui                 # 가중치·카메라를 골라서 띄우는 실행기 (윈도우: run_ui.cmd)
 python -m web.server --video 조립영상.mp4  # 녹화 영상으로 같은 판정. 끝나면 마지막 장면 유지(--video-end hold, 기본) · loop · stop
@@ -137,14 +137,14 @@ WebSocket 이 안 열리면(`websockets` 미설치 등) 화면이 알아서 200m
 
 ## 카메라 붙이기 — 시연 전 체크리스트
 
-`CameraSource` 는 구현돼 있다. 기본(`--model-type rtdetr`)은 `runs/rtdetr/full_run/weights/best.pt`가
-있으면 바로 된다. YOLO-OBB 가중치를 쓰려면 `model/yolo_obb_parts.pt`에 두고 `--model-type yolo-obb`
+`CameraSource` 는 구현돼 있다. 기본(`--model-type rtdetr`)은 `weights/rtdetr_best.pt`가
+있으면 바로 된다. YOLO-OBB 가중치를 쓰려면 `weights/yolo_obb_parts.pt`에 두고 `--model-type yolo-obb`
 (자세한 선택지는 위 "검출 모델 교체" 참고):
 
 ```bash
-pip install -r requirements.txt                      # ultralytics, opencv, uvicorn[standard], fastapi
+pip install -r requirements.txt                      # ultralytics, opencv, uvicorn[standard], starlette
 python -m web.server --source camera                 # 카메라 0번, 1280x720, conf 0.25, imgsz 640, rtdetr
-python -m web.server --source camera --camera 1 --camera-size 1920x1080 --model-type yolo-obb --weights model/best.pt
+python -m web.server --source camera --camera 1 --camera-size 1920x1080 --model-type yolo-obb --weights weights/yolo_obb_parts.pt
 ```
 
 준비물이 빠지면 서버가 시작할 때 한국어로 알려 주고 멈춘다 (패키지 없음 / 가중치 없음). 30분 뒤에 "왜 보류만 뜨지" 하는 일을 막으려고.
@@ -164,7 +164,7 @@ python -m web.server --source camera --camera 1 --camera-size 1920x1080 --model-
 
 ## Starlette 로 짠 이유
 
-팀 결정은 FastAPI 였다. 이 환경에서 fastapi 를 설치할 수 없어서(패키지 서버 차단) 그 아래층인 Starlette 로 짰다. FastAPI 는 Starlette 위의 얇은 층이고 `pip install fastapi` 하면 starlette 가 같이 온다 — 그래서 팀 환경에서는 추가 설치 없이 그대로 돈다.
+팀 결정은 FastAPI 였다. 이 환경에서 fastapi 를 설치할 수 없어서(패키지 서버 차단) 그 아래층인 Starlette 로 짰다. FastAPI 는 Starlette 위의 얇은 층일 뿐이고, 이 서버는 fastapi 의 어떤 기능도 안 쓰므로(아래 참고) 2026-10-02부터 `requirements.txt` 자체를 `starlette` 직접 의존으로 바꿔 fastapi 설치 시도 자체를 없앴다.
 
 이 서버는 요청 본문 검증이 없어서(POST 는 전부 빈 본문) FastAPI 층이 할 일이 없다. 그래도 FastAPI 로 바꾸고 싶으면 `create_app()` 끝의 `Starlette(routes=[...])` 를 `FastAPI()` + `app.add_api_route(...)`/`app.websocket(...)` 로 바꾸면 되고 핸들러 함수는 그대로다. 약 20줄.
 
@@ -189,15 +189,15 @@ python -m web.server --source camera --camera 1 --camera-size 1920x1080 --model-
 
 | 값 | 가중치 | 각도 처리 |
 |---|---|---|
-| `rtdetr`(기본) | `runs/rtdetr/full_run/weights/best.pt` | AABB만 나와서 어댑터가 mother 각도를 영상에서 복원 |
+| `rtdetr`(기본) | `weights/rtdetr_best.pt` | AABB만 나와서 어댑터가 mother 각도를 영상에서 복원 |
 | `yolo` | `--weights` 필수 | rtdetr와 같은 AABB, 같은 어댑터 |
-| `yolo-obb` | `model/yolo_obb_parts.pt` | 결과에 각도가 이미 있어 `detection_adapter.from_ultralytics`로 바로 변환 (한글 클래스명 매핑도 이 경로만 씀) |
+| `yolo-obb` | `weights/yolo_obb_parts.pt` | 결과에 각도가 이미 있어 `detection_adapter.from_ultralytics`로 바로 변환 (한글 클래스명 매핑도 이 경로만 씀) |
 | `rule_based` | 불필요 | classical CV(색상+구멍 개수), 모델 자체가 없음 |
 
 ```bash
 python -m web.server --source camera --camera 1                                   # rtdetr(기본)
 python -m web.server --source camera --camera 1 --model-type rule_based            # 모델 없이
-python -m web.server --source camera --camera 1 --model-type yolo-obb --weights model/best.pt
+python -m web.server --source camera --camera 1 --model-type yolo-obb --weights weights/yolo_obb_parts.pt
 ```
 
 ⚠️ 예전 "부품이 Mother 아래쪽에 오면 H1/H5를 못 가른다"는 코어 레벨 문제(당시 기록: 아래쪽으로 뒤집은

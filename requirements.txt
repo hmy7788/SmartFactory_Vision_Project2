@@ -1,10 +1,11 @@
-﻿# GPU torch(CUDA 12.6)는 conda env `vision_programming`에 미리 설치되어 있음:
+# GPU torch(CUDA 12.6)는 conda env `vision_programming`에 미리 설치되어 있음:
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-# 아래는 그 외 라이브러리
-ultralytics>=8.4      # YOLO (학습/추론)
-opencv-python>=5.0    # 컨투어/구멍 검출(룰베이스), 웹캠
+# 아래는 그 외 라이브러리 (코어 src/·테스트만 쓸 거면 ultralytics/opencv/Pillow 없이도 동작함).
+ultralytics>=8.4       # YOLO/RT-DETR (학습/추론)
+opencv-python>=5.0     # 컨투어/구멍 검출(룰베이스), 웹캠
+Pillow>=12.3            # scripts/verify_materials.py 이미지 로드
 numpy>=2.0
-fastapi>=0.141       # 웹 UI 백엔드
+starlette>=1.6          # 웹 UI 백엔드 (web/server.py — fastapi 없이 starlette 직접 사용)
 uvicorn[standard]>=0.53
 pytest
-paho-mqtt>=2.0         # MES 연동 (--mes-broker) 때만 필요. docs/mes_mqtt.md
+paho-mqtt>=2.0          # MES 연동 (--mes-broker) 때만 필요. docs/mes_mqtt.md

@@ -21,7 +21,7 @@ python -m unittest tests.test_store -v      # 실제 코어(InspectionService) �
 
 ```python
 store   = Store("data/pokayoke.db")                       # data/ 는 .gitignore 대상
-run     = store.open_run("model/yolo_obb_parts.pt", config)
+run     = store.open_run("weights/yolo_obb_parts.pt", config)
 product = store.open_product(run, recipe.recipe_id, started_ms=first_frame_ts)
 
 snapshot = service.update(frame)                          # 매 프레임

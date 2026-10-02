@@ -22,6 +22,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_PROJECT = str(REPO_ROOT / "runs" / "rtdetr")
+WEIGHTS_DIR = REPO_ROOT / "weights"          # 최종 가중치 — 모든 .pt를 이 폴더로 통일 (2026-10-02)
 # ⚠️ project를 상대경로("runs/rtdetr")로 주면 ultralytics가 자체 runs_dir 설정과 합쳐서
 #    runs/detect/runs/rtdetr 처럼 이상하게 중첩된다. 그래서 절대경로로 고정한다.
 from ultralytics import RTDETR
@@ -77,16 +78,18 @@ def register_progress_callbacks(model, total_epochs: int):
 def main():
     parser = argparse.ArgumentParser(description="RT-DETR 학습 (실험용)")
     parser.add_argument("--data", default="datasets/rtdetr_iconic/data.yaml")
-    parser.add_argument("--model", default="checkpoints/rtdetr-l.pt",
-                         help="사전학습 체크포인트 경로. 기본은 checkpoints/rtdetr-l.pt "
-                              "(없으면 ultralytics가 자동 다운로드하되, 새 이름을 주면 리포 루트에 받으니 "
-                              "받은 뒤 checkpoints/로 옮기는 걸 권장)")
+    parser.add_argument("--model", default="weights/rtdetr-l.pt",
+                         help="사전학습 체크포인트 경로. 기본은 weights/rtdetr-l.pt "
+                              "(없으면 ultralytics가 자동 다운로드하되, 받은 뒤 weights/로 옮기는 걸 권장)")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--device", default=0, help="GPU 인덱스, CPU면 'cpu'")
     parser.add_argument("--project", default=DEFAULT_PROJECT)
     parser.add_argument("--name", default="exp")
+    parser.add_argument("--out-name", default="rtdetr_best.pt",
+                         help="weights/ 에 저장할 최종 가중치 파일명 (기본 rtdetr_best.pt — "
+                              "scripts/live_inspection.py·web/source.py의 rtdetr 기본값과 일치)")
     args = parser.parse_args()
 
     print(f"[RT-DETR] 모델 로드: {args.model}", flush=True)
@@ -102,6 +105,15 @@ def main():
         project=args.project,
         name=args.name,
     )
+
+    # best.pt를 weights/ 로 복사 (학습 로그/plot은 runs/rtdetr/<name>/에 그대로 둠)
+    best_src = Path(args.project) / args.name / "weights" / "best.pt"
+    if best_src.exists():
+        WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+        import shutil
+        best_out = WEIGHTS_DIR / args.out_name
+        shutil.copy2(best_src, best_out)
+        print(f"[RT-DETR] 최적 가중치 저장: {best_out}", flush=True)
 
 
 if __name__ == "__main__":

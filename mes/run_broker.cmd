@@ -12,7 +12,7 @@ echo Broker: localhost:1883   config: mosquitto\mosquitto.conf   Stop: Ctrl+C
 goto :end
 :running
 echo === Port 1883 is already in use: a broker is already running, probably the Mosquitto Windows service.
-echo     Nothing to do - go on with run_mes.cmd
+echo     Nothing to do - go on with run_mes_light.cmd (or run_mes_demo.cmd for all three at once)
 goto :end
 :nomq
 echo === Mosquitto is not installed.

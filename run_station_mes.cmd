@@ -5,7 +5,7 @@ chcp 65001 >nul
 set "PYTHONUTF8=1"
 rem  Station screen linked to the MES: the MES work order decides recipe and quantity, [Complete] reports each product.
 rem  Needs first: mes\run_broker.cmd (Mosquitto, port 1883) and mes\run_mes_light.cmd (MES, port 8080) - or run_mes_demo.cmd for all three
-rem  Usage: double-click = pick a .pt from model\ and a camera.  Drag a .pt (and/or a video) onto this file to use those.
+rem  Usage: double-click = pick a .pt from weights\ and a camera.  Drag a .pt (and/or a video) onto this file to use those.
 rem         RT-DETR is the default model type. For a YOLO-OBB weight add:  --model-type yolo-obb
 set "BROKER=localhost:1883"
 set "STATION=VIS-01"
@@ -23,10 +23,10 @@ goto :deps
 %PY% --version >nul 2>nul || goto :nopy
 echo Using: %PY% (CPU)
 :deps
-"%PY%" -c "import ultralytics, cv2, fastapi, uvicorn, paho.mqtt" >nul 2>nul
+"%PY%" -c "import ultralytics, cv2, starlette, uvicorn, paho.mqtt" >nul 2>nul
 if not errorlevel 1 goto :run
 echo installing packages (first time only) ...
-"%PY%" -m pip install ultralytics opencv-python fastapi "uvicorn[standard]" "paho-mqtt>=2.0"
+"%PY%" -m pip install ultralytics opencv-python starlette "uvicorn[standard]" "paho-mqtt>=2.0"
 if errorlevel 1 goto :fail
 :run
 echo Broker: %BROKER%   Station: %STATION%   topics factory/%STATION%/...

@@ -37,7 +37,7 @@ class StoreTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.tmp.name) / "t.db")
-        self.run = self.store.open_run("model/yolo_obb_parts.pt", load_config(ROOT / "config/mvp.json"))
+        self.run = self.store.open_run("weights/yolo_obb_parts.pt", load_config(ROOT / "config/mvp.json"))
 
     def tearDown(self):
         self.store.close()

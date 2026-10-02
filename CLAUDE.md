@@ -262,7 +262,7 @@ pokayoke-assembly-verification/
 │   └── test_state_machine.py      # 가짜 입력으로 상태머신 단위 테스트 (YOLO 불필요)
 ├── docs/                           # 실험/작업 기록 (예: RT-DETR 실험 결과, 크롭 데이터셋 노트)
 ├── web/                            # 웹 UI
-├── checkpoints/
+├── weights/                        # 모든 .pt (사전학습 베이스 + fine-tuning 완료본), Git 제외
 ├── requirements.txt
 └── README.md
 ```

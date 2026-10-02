@@ -16,8 +16,6 @@ Thumbs.db
 data/**/*
 !data/**/
 !data/**/.gitkeep
-checkpoints/**/*
-!checkpoints/.gitkeep
 *.pt
 *.pth
 *.onnx
@@ -25,3 +23,12 @@ runs/
 
 # 학습용으로 원본 데이터를 복사/변환해 만든 데이터셋 (재생성 가능, 대용량)
 datasets/
+
+# 최종 발표 영상 (99MB, git에 올리기엔 너무 큼 — 필요하면 별도 공유)
+presentation/*.mp4
+
+# 학습·평가 리포트 (train_yolo_obb / evaluate_obb / classification 이 생성, 재생성 가능)
+reports/
+
+# 직접 검수용 test셋 추론 결과 원본 149장 (15MB, README에 안 씀 — runs/rtdetr_test/에서 재생성 가능)
+presentation/ppt/rtdetr_test/all_149/

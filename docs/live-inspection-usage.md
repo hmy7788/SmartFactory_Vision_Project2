@@ -8,7 +8,7 @@ RT-DETR로 부품을 검출하고, 재료 확인 → 조립 검사(H1~H5 구멍�
 ## 1. 준비
 
 - conda 환경 `vision_programming` 활성화 (ultralytics, opencv, pillow 설치됨)
-- 가중치: `runs/rtdetr/full_run/weights/best.pt` (3차 실험, 980장 학습) — 기본값
+- 가중치: `weights/rtdetr_best.pt` (3차 실험, 980장 학습) — 기본값
 - 카메라: 검은 배경 위, 탑다운, 조립체를 화면 안에 통째로 넣기
 - **저장소 루트에서 실행** (`python -m`으로 실행해야 `src` 패키지를 찾음)
 
@@ -96,9 +96,9 @@ python -m scripts.live_inspection --video 1.mp4 --recipe 3 --save-video runs/ins
 
 | 값 | 로드 클래스 | 기본 가중치 | 각도 처리 |
 |---|---|---|---|
-| `rtdetr` (기본) | `ultralytics.RTDETR` | `runs/rtdetr/full_run/weights/best.pt` | AABB만 나와서 `rtdetr_adapter.py`가 mother 각도를 영상에서 복원 |
+| `rtdetr` (기본) | `ultralytics.RTDETR` | `weights/rtdetr_best.pt` | AABB만 나와서 `rtdetr_adapter.py`가 mother 각도를 영상에서 복원 |
 | `yolo` | `ultralytics.YOLO` (detect) | 없음 — `--weights` 필수 | rtdetr와 같은 AABB라 같은 어댑터 재사용 |
-| `yolo-obb` | `ultralytics.YOLO` (obb) | `model/yolo_obb_parts.pt` | 결과에 각도가 이미 있어 복원 없이 그대로 사용 (CLAUDE.md 확정 메인 파이프라인) |
+| `yolo-obb` | `ultralytics.YOLO` (obb) | `weights/yolo_obb_parts.pt` | 결과에 각도가 이미 있어 복원 없이 그대로 사용 (CLAUDE.md 확정 메인 파이프라인) |
 | `rule_based` | 없음(모델 자체가 없음) | 불필요 | `src/vision/rule_based_adapter.py`가 classical CV(색상+구멍 개수)로 직접 컨투어를 찾아 각도까지 구함 |
 
 ```
@@ -206,11 +206,11 @@ python -m scripts.replay_detections --demo --recipe recipe_1 --output outputs/re
 
 ### 9-3. 사진으로 확인 (팀원 스크립트) — YOLO 가중치 필요
 
-⚠️ 기본 모델 경로 `model/yolo_obb_parts.pt`가 저장소에 없으면 `--model`로 지정해야 함.
+⚠️ 기본 모델 경로 `weights/yolo_obb_parts.pt`가 저장소에 없으면 `--model`로 지정해야 함.
 
 ```
 python -m scripts.verify_materials --recipe all
-python -m scripts.visualize_rois --images sample_img --output outputs/roi_debug
+python -m scripts.visualize_rois --images scripts/sample_img --output outputs/roi_debug
 ```
 
 - `verify_materials`: 재료 사진이 각 레시피 재료와 맞는지 검사 (`--recipe recipe_1|recipe_2|recipe_3|all`), 결과는 `outputs/material_debug/<시각>/`

@@ -52,9 +52,9 @@ def draw_overlay(source, records, geometry, message, part_type, destination):
 def main():
     from ultralytics import YOLO
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", type=Path, default=ROOT/"model/yolo_obb_parts.pt")
+    parser.add_argument("--model", type=Path, default=ROOT/"weights/yolo_obb_parts.pt")
     parser.add_argument("--class-mapping", type=Path, default=ROOT/"config/class_mapping.json")
-    parser.add_argument("--images", type=Path, default=ROOT/"sample_img")
+    parser.add_argument("--images", type=Path, default=ROOT/"scripts/sample_img")
     parser.add_argument("--config", type=Path, default=ROOT/"config/mvp.json")
     parser.add_argument("--output", type=Path, default=ROOT/"outputs/roi_debug")
     parser.add_argument("--conf", type=float, default=.25, help="Diagnostic inference threshold; does not change MVP threshold")

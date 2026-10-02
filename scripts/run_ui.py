@@ -1,9 +1,9 @@
 """모델 하나를 골라 작업자 UI 를 띄운다 — 팀원 각자의 가중치로 같은 화면·같은 판정을 돌려 보는 용도.
 
-    python -m scripts.run_ui                              # model/*.pt 중에서 고르기 → 카메라 번호 고르기 → 브라우저 자동
-    python -m scripts.run_ui model/my_yolo26.pt           # 가중치 지정
-    python -m scripts.run_ui model/my.pt 조립영상.mp4      # 웹캠 대신 녹화 영상 (원래 속도로 재생, 판정은 같다)
-    python -m scripts.run_ui model/my.pt --camera 1       # 카메라 번호를 바로 (묻지 않음)
+    python -m scripts.run_ui                              # weights/*.pt 중에서 고르기 → 카메라 번호 고르기 → 브라우저 자동
+    python -m scripts.run_ui weights/my_yolo26.pt         # 가중치 지정
+    python -m scripts.run_ui weights/my.pt 조립영상.mp4    # 웹캠 대신 녹화 영상 (원래 속도로 재생, 판정은 같다)
+    python -m scripts.run_ui weights/my.pt --camera 1     # 카메라 번호를 바로 (묻지 않음)
     python -m scripts.run_ui --demo                       # 모델·카메라 없이 합성 데모 화면
 
     윈도우: run_ui.cmd 를 더블클릭하거나, .pt / 영상 파일을 run_ui.cmd 위에 끌어다 놓는다.
@@ -45,14 +45,18 @@ def ask(prompt: str, default: str, timeout: float | None = None) -> str:
     return box[0].strip() or default
 
 
+BASE_CHECKPOINTS = {"yolo26n.pt", "yolo11n-obb.pt", "rtdetr-l.pt"}  # fine-tuning 전 사전학습 베이스 — 검출용 선택지에서 제외
+
+
 def pick_weights() -> Path | None:
-    found = sorted(p for p in (ROOT / "model").glob("*.pt") if "classifier" not in p.name.lower())
+    found = sorted(p for p in (ROOT / "weights").glob("*.pt")
+                   if "classifier" not in p.name.lower() and p.name not in BASE_CHECKPOINTS)
     if not found:
-        print("model/ 폴더에 검출 가중치(.pt)가 없습니다. 받은 .pt 를 model/ 에 넣거나 run_ui.cmd 위에 끌어다 놓으세요.")
+        print("weights/ 폴더에 검출 가중치(.pt)가 없습니다. 받은 .pt 를 weights/ 에 넣거나 run_ui.cmd 위에 끌어다 놓으세요.")
         return None
     if len(found) == 1:
         return found[0]
-    print("model/ 의 가중치:")
+    print("weights/ 의 가중치:")
     for i, p in enumerate(found, 1):
         print(f"  [{i}] {p.name}  ({p.stat().st_size / 1e6:.1f} MB)")
     default = next((i for i, p in enumerate(found, 1) if p.name == "yolo_obb_parts.pt"), 1)

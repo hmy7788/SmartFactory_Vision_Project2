@@ -18,17 +18,19 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--recipe",choices=["recipe_1","recipe_2","recipe_3","all"],default="recipe_1")
+    parser.add_argument("--output",type=Path,default=ROOT/"outputs/material_debug",
+                        help="결과 저장 폴더 (아래에 실행 시각 폴더가 생김)")
     args = parser.parse_args()
     config = load_config(ROOT/"config/mvp.json")
     mapping = json.loads((ROOT/"config/class_mapping.json").read_text(encoding="utf-8"))
-    model = YOLO(str(ROOT/"model/yolo_obb_parts.pt"))
+    model = YOLO(str(ROOT/"weights/yolo_obb_parts.pt"))
     names = [f"recipe_{i}" for i in (1,2,3)] if args.recipe == "all" else [args.recipe]
     recipes = [load_recipe(ROOT/f"config/recipes/{name}.json") for name in names]
-    output = ROOT/"outputs/material_debug"/datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    output = args.output/datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     output.mkdir(parents=True)
-    report = {"model":str(ROOT/"model/yolo_obb_parts.pt"),"confidence_threshold":config["confidence_threshold"],
+    report = {"model":str(ROOT/"weights/yolo_obb_parts.pt"),"confidence_threshold":config["confidence_threshold"],
               "note":"Independent still images; READY is a candidate, not a confirmed transition.","cases":[]}
-    for path in sorted((ROOT/"sample_img").glob("material_sample_*.jpg")):
+    for path in sorted((ROOT/"scripts/sample_img").glob("material_sample_*.jpg")):
         source = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
         result = model.predict(source,conf=.25,imgsz=640,device="cpu",verbose=False)[0]
         frame = from_ultralytics(result,0,0,mapping)
