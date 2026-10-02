@@ -309,29 +309,6 @@ stateDiagram-v2
 | 허민엽 | 팀원 | 룰베이스, RT-DETR 학습, 조립 과정 평가 로직 고도화 |
 | 최유성 | 팀원 | YOLO11n-OBB 학습, DB 저장 계층, 웹 UI, MES 연동 |
 
-<details>
-<summary>허민엽 담당 상세</summary>
-
-- 룰베이스 비전 (`src/rule_based/`)
-  - 컨투어, 구멍 개수, 회전 보정, 배치 검증으로 완성품 Model A/B/C 판별
-  - 여러 부품을 동시에 찾는 실시간 검출 어댑터로 확장 (`src/vision/rule_based_adapter.py`)
-- RT-DETR-L 학습 (`src/detection/rt-detr/`)
-  - 단일 부품, 조립체 데이터 추가, 980장 통합 순으로 3차 학습
-  - 조립체 데이터 추가로 2구, 3구 파트 혼동 해결
-  - 일반 박스만 출력하는 RT-DETR 결과에서 Mother 각도를 영상으로 복원하는 어댑터 구현
-  - 실험 기록: [docs/rt-detr-experiment.md](docs/rt-detr-experiment.md)
-- 라이브 검사 앱 (`scripts/live_inspection.py`)
-  - RT-DETR, YOLO, YOLO-OBB, 룰베이스를 옵션 하나로 교체
-  - 카메라 좌우, 상하 반전 보정
-  - PASS 확정 시 룰베이스로 완성 형태 교차검증
-- 판정 로직 개선
-  - 부품이 Mother 아래쪽에 붙은 오조립과 조립체 전체 180도 회전 구분
-  - 물리적으로 불가능한 부품 위치 조합 차단
-  - 웹 화면에서 180도 회전 시 구멍 번호가 잘못 표시되던 문제 수정
-- 웹 UI 브랜치와 판정 로직 브랜치 통합, 아키텍처 문서 작성
-
-</details>
-
 ## 11. 회고
 
 - 잘한 점
