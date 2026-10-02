@@ -309,7 +309,11 @@ stateDiagram-v2
 | 허민엽 | 팀원 | 룰베이스, RT-DETR 학습, 조립 과정 평가 로직 고도화 |
 | 최유성 | 팀원 | YOLO11n-OBB 학습, DB 저장 계층, 웹 UI, MES 연동 |
 
-## 11. 회고
+## 11. 프로젝트 소개 영상
+[![시연 영상](https://img.youtube.com/vi/MuZ7LdKFj_c/maxresdefault.jpg)](https://www.youtube.com/watch?v=MuZ7LdKFj_c)
+이미지를 클릭하면 YouTube 시연 영상으로 이동합니다.
+
+## 12. 회고
 
 - 잘한 점
   - 룰베이스의 한계를 수치로 확인한 뒤 딥러닝 모델 3종을 같은 조건에서 비교해 선택
@@ -324,7 +328,7 @@ stateDiagram-v2
   - 로봇 조립 결과 검증으로 확장
   - 모델 경량화 및 추론 속도 개선, 토크 센서 등과 결합한 물리 품질 검증
 
-## 12. 관련 문서
+## 14. 관련 문서
 
 | 문서 | 내용 |
 |---|---|
