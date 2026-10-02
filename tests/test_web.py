@@ -331,6 +331,7 @@ class ServerTests(unittest.TestCase):
 
     def tearDown(self):
         self.client.__exit__(None, None, None)      # lifespan shutdown → pipeline.stop()
+        self.store.close()                          # DB가 열린 채면 Windows에서 임시 폴더를 못 지운다
         self.tmp.cleanup()
 
     def wait(self, pred, seconds=15):
@@ -416,7 +417,7 @@ class RecipeHotAddTests(unittest.TestCase):
         self.client = TestClient(self.app); self.client.__enter__()
 
     def tearDown(self):
-        self.client.__exit__(None, None, None); self.tmp.cleanup()
+        self.client.__exit__(None, None, None); self.store.close(); self.tmp.cleanup()
 
     def test_recipe_file_added_after_start_is_selectable(self):
         t0 = time.time()
@@ -447,7 +448,7 @@ class UiLogicTests(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not installed")
-        run = subprocess.run([node, str(ROOT / "tests" / "test_web_ui.js")], capture_output=True, text=True, timeout=60)
+        run = subprocess.run([node, str(ROOT / "tests" / "test_web_ui.js")], capture_output=True, text=True, encoding="utf-8", timeout=60)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
 

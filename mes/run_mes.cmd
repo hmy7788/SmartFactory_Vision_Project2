@@ -4,6 +4,12 @@ cd /d "%~dp0"
 chcp 65001 >nul
 powershell -NoProfile -Command "if ('%~dp0' -match '[^\x00-\x7F]') { exit 1 }" >nul 2>nul
 if "%errorlevel%"=="1" goto :badpath
+rem  A Windows account name with non-English letters puts the Gradle cache (%USERPROFILE%\.gradle) on a
+rem  non-English path too, and Gradle fails there just like with the project path - use an English one.
+if defined GRADLE_USER_HOME goto :gradlehome_ok
+powershell -NoProfile -Command "if ($env:USERPROFILE -match '[^\x00-\x7F]') { exit 1 }" >nul 2>nul
+if errorlevel 1 set "GRADLE_USER_HOME=%SystemDrive%\gradle_home"
+:gradlehome_ok
 java -version >nul 2>nul
 if errorlevel 1 goto :nojava
 java -version 2>&1 | findstr /r /c:"version \"2[5-9]" >nul

@@ -7,7 +7,7 @@
                   src/vision/rule_based_adapter.py)를 그대로 쓴다.
 
 세 소스 모두 같은 인터페이스라 server.py 는 --source 옵션만 다르다.
-timestamp 는 단조 증가 ms (time.monotonic 기준). 벽시계를 쓰지 않는다 — 코어의 frame gap 판정이 이 값에 걸려 있다.
+timestamp 는 단조 증가 ms (time.perf_counter 기준). 벽시계를 쓰지 않는다 — 코어의 frame gap 판정이 이 값에 걸려 있다.
 """
 from __future__ import annotations
 
@@ -26,9 +26,9 @@ from src.vision.rule_based_adapter import RuleBasedAdapter
 
 # --weights 생략 시 --model-type별 기본 경로 (scripts/live_inspection.py와 동일한 규칙).
 DEFAULT_WEIGHTS = {
-    "rtdetr": "runs/rtdetr/full_run/weights/best.pt",
+    "rtdetr": "weights/rtdetr_best.pt",
     "yolo": None,
-    "yolo-obb": "model/yolo_obb_parts.pt",
+    "yolo-obb": "weights/yolo_obb_parts.pt",
     "rule_based": None,
 }
 
@@ -36,7 +36,8 @@ Frame = tuple[DetectionFrame, bytes | None]
 
 
 def now_ms() -> int:
-    return int(time.monotonic() * 1000)
+    # monotonic()은 Windows에서 15.6ms 단위로만 바뀌어 연속 프레임이 같은 timestamp를 받는다
+    return int(time.perf_counter() * 1000)
 
 
 class Source(Protocol):
@@ -326,6 +327,7 @@ class CameraSource:
 
     def close(self) -> None:
         self._infer_stop.set()
+        self._release_capture()
 
     def frames(self) -> Iterator[Frame]:
         has_model = self.model_type == "rule_based" or not (self.weights is None and self._model is None)
@@ -398,6 +400,15 @@ class CameraSource:
                 yield DetectionFrame(self.frame_id, ts, dets, input_valid=valid), self._encode(img)
         finally:
             self._infer_stop.set()
+            self._release_capture()
+
+    def _release_capture(self) -> None:
+        # 영상 파일 핸들을 놓지 않으면 Windows에서 파일이 잠긴 채로 남는다
+        if self._injected:
+            return
+        if self._capture is not None and hasattr(self._capture, "release"):
+            self._capture.release()
+        self._capture = None
 
     def _reopen(self) -> None:
         if self._injected:
