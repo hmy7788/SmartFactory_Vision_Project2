@@ -1,5 +1,5 @@
 """
-prepare_obb_dataset.py
+prepare_obb_from_sources.py
 
 메인 파이프라인(YOLO-OBB, CLAUDE.md 3-1에 OBB로 확정된 포맷)용 통합 데이터셋 준비 스크립트.
 rt-detr/prepare_rtdetr_dataset.py(AABB 버전)와 소스·그룹핑·중복 제거 로직은 동일하고
@@ -28,8 +28,8 @@ rt-detr/prepare_rtdetr_dataset.py(AABB 버전)와 소스·그룹핑·중복 제�
 Train/Val 분할: prepare_rtdetr_dataset.py와 동일하게 소스(그룹)별로 15%씩 무작위 val.
 
 사용법:
-    python src/detection/prepare_obb_dataset.py
-    python src/detection/prepare_obb_dataset.py --output datasets/yolo_obb_full --val-ratio 0.15
+    python src/detection/prepare_obb_from_sources.py
+    python src/detection/prepare_obb_from_sources.py --output datasets/yolo_obb_full --val-ratio 0.15
 """
 
 import argparse

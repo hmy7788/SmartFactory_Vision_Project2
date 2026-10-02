@@ -231,7 +231,7 @@ epochs=10, batch=8, imgsz=640, 모델 `rtdetr-l.pt`. 1·2차 실험과 동일 �
 - 가중치: `runs/rtdetr/full_run/weights/{best,last}.pt`
 - 전체 지표: `runs/rtdetr/full_run/results.csv`
 - 추론 테스트 이미지(149장 전체): `runs/rtdetr_test/full_run/`
-- 데이터셋: `data/aabb/`, `data/obb/` (`.gitignore`에 걸려 커밋 안 됨, 재현하려면 `prepare_rtdetr_dataset.py`/`prepare_obb_dataset.py` 재실행)
+- 데이터셋: `data/aabb/`, `data/obb/` (`.gitignore`에 걸려 커밋 안 됨, 재현하려면 `prepare_rtdetr_dataset.py`/`prepare_obb_from_sources.py` 재실행)
 
 ## TODO (3차 실험)
 
